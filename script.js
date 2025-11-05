@@ -7,7 +7,9 @@ const state = {
   view: 'period',
   selectedEntity: '',
   assignmentEditing: null,
-  entityEditing: null
+  entityEditing: null,
+  multiSelectMode: false,
+  selectedSlots: new Set()
 };
 
 let counters = {
@@ -37,6 +39,11 @@ const days = [
   { key: 'friday', label: 'Sexta' },
   { key: 'saturday', label: 'Sábado' }
 ];
+
+const dayOrder = days.reduce((acc, day, index) => {
+  acc[day.key] = index;
+  return acc;
+}, {});
 
 const sessions = [
   {
@@ -77,6 +84,17 @@ const sessions = [
   }
 ];
 
+const slotDictionary = sessions.reduce((acc, session, sessionIndex) => {
+  session.slots.forEach((slot, slotIndex) => {
+    acc[slot.code] = {
+      ...slot,
+      sessionName: session.name,
+      order: sessionIndex * 10 + slotIndex
+    };
+  });
+  return acc;
+}, {});
+
 const entityCollections = {
   period: 'periods',
   professor: 'professors',
@@ -108,6 +126,10 @@ const elements = {
   viewTypeSelect: document.getElementById('view-type'),
   entitySelector: document.getElementById('entity-selector'),
   scheduleContainer: document.getElementById('schedule-container'),
+  toggleMultiSelect: document.getElementById('toggle-multi-select'),
+  selectionSummary: document.getElementById('selection-summary'),
+  editSelection: document.getElementById('edit-selection'),
+  clearSelection: document.getElementById('clear-selection'),
   modal: document.getElementById('assignment-modal'),
   modalClose: document.querySelector('.modal-close'),
   assignmentForm: document.getElementById('assignment-form'),
@@ -610,6 +632,9 @@ function updateEntitySelector() {
   if (!source.some((item) => item.id === state.selectedEntity)) {
     state.selectedEntity = '';
   }
+  if (!state.selectedEntity) {
+    clearSelectedSlots();
+  }
   if (state.selectedEntity) {
     entitySelector.value = state.selectedEntity;
   }
@@ -634,6 +659,80 @@ function getRoomById(id) {
 
 function slotKey(dayKey, slotCode) {
   return `${dayKey}|${slotCode}`;
+}
+
+function parseSlotKey(key) {
+  const [dayKey, slotCode] = (key || '').split('|');
+  return { dayKey, slotCode };
+}
+
+function formatSlotLabel(dayKey, slotCode) {
+  const day = days.find((d) => d.key === dayKey);
+  const slotInfo = slotDictionary[slotCode];
+  if (!slotInfo) {
+    return `${day ? day.label : dayKey} • ${slotCode}`;
+  }
+  return `${day ? day.label : dayKey} • ${slotInfo.code} (${slotInfo.time})`;
+}
+
+function updateSelectionUI() {
+  const { toggleMultiSelect, selectionSummary, editSelection, clearSelection } = elements;
+  if (toggleMultiSelect) {
+    toggleMultiSelect.setAttribute('aria-pressed', state.multiSelectMode ? 'true' : 'false');
+    toggleMultiSelect.textContent = state.multiSelectMode
+      ? 'Desativar seleção múltipla'
+      : 'Ativar seleção múltipla';
+  }
+  const count = state.selectedSlots.size;
+  if (selectionSummary) {
+    const baseText = count
+      ? `${count} horário${count > 1 ? 's' : ''} selecionado${count > 1 ? 's' : ''}.`
+      : 'Nenhum horário selecionado.';
+    selectionSummary.textContent = state.multiSelectMode
+      ? `Seleção múltipla ativa — ${baseText}`
+      : baseText;
+  }
+  if (editSelection) {
+    editSelection.disabled = !count;
+  }
+  if (clearSelection) {
+    clearSelection.disabled = !count;
+  }
+}
+
+function clearSelectedSlots(options = {}) {
+  const { preserveMode = false } = options;
+  state.selectedSlots.clear();
+  if (!preserveMode) {
+    state.multiSelectMode = false;
+  }
+  updateSelectionUI();
+}
+
+function toggleSlotSelection(dayKey, slotCode, button) {
+  const key = slotKey(dayKey, slotCode);
+  if (state.selectedSlots.has(key)) {
+    state.selectedSlots.delete(key);
+    if (button) {
+      button.classList.remove('selected');
+      button.setAttribute('aria-pressed', 'false');
+    }
+  } else {
+    state.selectedSlots.add(key);
+    if (button) {
+      button.classList.add('selected');
+      button.setAttribute('aria-pressed', 'true');
+    }
+  }
+  updateSelectionUI();
+}
+
+function handleSlotClick(button, dayKey, slotCode) {
+  if (state.multiSelectMode) {
+    toggleSlotSelection(dayKey, slotCode, button);
+    return;
+  }
+  openAssignmentModalForSlots([{ dayKey, slotCode }]);
 }
 
 function ensureSchedule(periodId) {
@@ -760,6 +859,16 @@ function renderSchedule() {
         button.dataset.slot = slot.code;
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
         button.innerHTML = buildCellContent(assignments);
+        const key = slotKey(day.key, slot.code);
+        if (state.selectedSlots.has(key)) {
+          button.classList.add('selected');
+          button.setAttribute('aria-pressed', 'true');
+        } else {
+          button.setAttribute('aria-pressed', 'false');
+        }
+        button.addEventListener('click', (event) => {
+          handleSlotClick(event.currentTarget, day.key, slot.code);
+        });
         cell.appendChild(button);
         row.appendChild(cell);
       });
@@ -769,59 +878,113 @@ function renderSchedule() {
 
   table.appendChild(tbody);
   scheduleContainer.appendChild(table);
-
-  scheduleContainer.querySelectorAll('.slot-cell').forEach((btn) => {
-    btn.addEventListener('click', () => openAssignmentModal(btn.dataset.day, btn.dataset.slot));
-  });
+  updateSelectionUI();
 }
 
-function openAssignmentModal(dayKey, slotCode) {
+function openAssignmentModalForSlots(slotsInput) {
   if (!state.selectedEntity) {
     alert('Selecione um item para editar o horário.');
     return;
   }
-  state.assignmentEditing = {
-    dayKey,
-    slotCode,
-    originalPeriodId: null,
-    originalEntry: null
-  };
+  const normalizedSlots = (Array.isArray(slotsInput) ? slotsInput : [])
+    .map(({ dayKey, slotCode }) => ({ dayKey, slotCode }))
+    .filter((slot) => slot.dayKey && slot.slotCode);
+  if (!normalizedSlots.length) return;
 
-  elements.assignmentDay.value = days.find((d) => d.key === dayKey)?.label || '';
-  elements.assignmentSlot.value = `${slotCode}`;
+  normalizedSlots.sort((a, b) => {
+    const dayDiff = (dayOrder[a.dayKey] ?? 0) - (dayOrder[b.dayKey] ?? 0);
+    if (dayDiff !== 0) return dayDiff;
+    const slotOrderA = slotDictionary[a.slotCode]?.order ?? 0;
+    const slotOrderB = slotDictionary[b.slotCode]?.order ?? 0;
+    return slotOrderA - slotOrderB;
+  });
 
   populateModalSelects();
-  const key = slotKey(dayKey, slotCode);
-  let existing = null;
 
-  if (state.view === 'period') {
-    existing = getAssignmentForPeriod(state.selectedEntity, key);
-    state.assignmentEditing.originalPeriodId = state.selectedEntity;
-  } else if (state.view === 'professor') {
-    const result = findAssignmentByProfessor(state.selectedEntity, key);
-    if (result) {
-      existing = result.data;
-      state.assignmentEditing.originalPeriodId = result.periodId;
+  const details = normalizedSlots.map((slot) => {
+    const key = slotKey(slot.dayKey, slot.slotCode);
+    let originalPeriodId = null;
+    let originalEntry = null;
+    if (state.view === 'period') {
+      originalPeriodId = state.selectedEntity;
+      originalEntry = getAssignmentForPeriod(state.selectedEntity, key);
+    } else if (state.view === 'professor') {
+      const result = findAssignmentByProfessor(state.selectedEntity, key);
+      if (result) {
+        originalPeriodId = result.periodId;
+        originalEntry = result.data;
+      }
+    } else if (state.view === 'room') {
+      const result = findAssignmentByRoom(state.selectedEntity, key);
+      if (result) {
+        originalPeriodId = result.periodId;
+        originalEntry = result.data;
+      }
     }
-  } else if (state.view === 'room') {
-    const result = findAssignmentByRoom(state.selectedEntity, key);
-    if (result) {
-      existing = result.data;
-      state.assignmentEditing.originalPeriodId = result.periodId;
-    }
+    return { ...slot, key, originalPeriodId, originalEntry };
+  });
+
+  state.assignmentEditing = {
+    slots: normalizedSlots,
+    details,
+    multi: normalizedSlots.length > 1
+  };
+
+  const firstDetail = details[0];
+  if (state.assignmentEditing.multi) {
+    elements.assignmentDay.value = `${details.length} horários selecionados`;
+    elements.assignmentSlot.value = 'Múltiplos blocos';
+  } else if (firstDetail) {
+    elements.assignmentDay.value = days.find((d) => d.key === firstDetail.dayKey)?.label || '';
+    elements.assignmentSlot.value = `${firstDetail.slotCode}`;
   }
 
-  if (existing) {
-    state.assignmentEditing.originalEntry = existing;
-    elements.assignmentDiscipline.value = existing.disciplineId;
-    elements.assignmentPeriod.value = state.assignmentEditing.originalPeriodId;
-    elements.assignmentProfessor.value = existing.professorId || '';
-    elements.assignmentRoom.value = existing.roomId || '';
+  const disciplineValues = new Set();
+  const professorValues = new Set();
+  const roomValues = new Set();
+  const periodValues = new Set();
+
+  details.forEach((detail) => {
+    if (detail.originalEntry) {
+      if (detail.originalEntry.disciplineId) {
+        disciplineValues.add(detail.originalEntry.disciplineId);
+      }
+      if (detail.originalEntry.professorId) {
+        professorValues.add(detail.originalEntry.professorId);
+      }
+      if (detail.originalEntry.roomId) {
+        roomValues.add(detail.originalEntry.roomId);
+      }
+    }
+    if (detail.originalPeriodId) {
+      periodValues.add(detail.originalPeriodId);
+    }
+  });
+
+  elements.assignmentDiscipline.value = disciplineValues.size === 1 ? [...disciplineValues][0] : '';
+
+  if (state.view === 'period') {
+    elements.assignmentPeriod.value = state.selectedEntity;
+  } else if (periodValues.size === 1) {
+    elements.assignmentPeriod.value = [...periodValues][0];
   } else {
-    elements.assignmentDiscipline.value = '';
-    elements.assignmentPeriod.value = state.view === 'period' ? state.selectedEntity : '';
-    elements.assignmentProfessor.value = state.view === 'professor' ? state.selectedEntity : '';
-    elements.assignmentRoom.value = state.view === 'room' ? state.selectedEntity : '';
+    elements.assignmentPeriod.value = '';
+  }
+
+  if (state.view === 'professor') {
+    elements.assignmentProfessor.value = state.selectedEntity;
+  } else if (professorValues.size === 1) {
+    elements.assignmentProfessor.value = [...professorValues][0];
+  } else {
+    elements.assignmentProfessor.value = '';
+  }
+
+  if (state.view === 'room') {
+    elements.assignmentRoom.value = state.selectedEntity;
+  } else if (roomValues.size === 1) {
+    elements.assignmentRoom.value = [...roomValues][0];
+  } else {
+    elements.assignmentRoom.value = '';
   }
 
   if (state.view === 'period') {
@@ -844,6 +1007,10 @@ function openAssignmentModal(dayKey, slotCode) {
   } else {
     elements.assignmentRoom.disabled = false;
   }
+
+  elements.removeAssignment.textContent = state.assignmentEditing.multi
+    ? 'Limpar horários'
+    : 'Remover horário';
 
   updatePeriodByDiscipline();
   updateSuggestions();
@@ -873,9 +1040,11 @@ elements.assignmentPeriod.addEventListener('change', updateSuggestions);
 
 elements.assignmentForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (!state.assignmentEditing) return;
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
 
-  const { dayKey, slotCode, originalPeriodId } = state.assignmentEditing;
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
+
   const disciplineId = elements.assignmentDiscipline.value;
   const periodId = elements.assignmentPeriod.value;
   const professorId = elements.assignmentProfessor.value;
@@ -896,31 +1065,41 @@ elements.assignmentForm.addEventListener('submit', (event) => {
     }
   }
 
-  const key = slotKey(dayKey, slotCode);
-  const conflicts = findConflicts({
-    periodId,
-    professorId,
-    roomId,
-    key,
-    originalPeriodId,
-    originalEntry: state.assignmentEditing.originalEntry
+  const conflictMessages = [];
+  details.forEach((detail) => {
+    const conflicts = findConflicts({
+      periodId,
+      professorId,
+      roomId,
+      key: detail.key,
+      originalPeriodId: detail.originalPeriodId,
+      originalEntry: detail.originalEntry
+    });
+    conflicts.forEach((message) => {
+      conflictMessages.push(`${formatSlotLabel(detail.dayKey, detail.slotCode)}: ${message}`);
+    });
   });
-  if (conflicts.length) {
+
+  if (conflictMessages.length) {
     const proceed = confirm(
-      `Existem conflitos neste horário:\n\n${conflicts.join('\n')}\n\nDeseja substituir mesmo assim?`
+      `Existem conflitos nestes horários:\n\n${conflictMessages.join('\n')}\n\nDeseja substituir mesmo assim?`
     );
     if (!proceed) {
       return;
     }
   }
 
-  const schedule = ensureSchedule(periodId);
-  schedule[key] = { disciplineId, professorId, roomId };
+  details.forEach((detail) => {
+    const schedule = ensureSchedule(periodId);
+    schedule[detail.key] = { disciplineId, professorId, roomId };
 
-  if (originalPeriodId && originalPeriodId !== periodId) {
-    const previous = ensureSchedule(originalPeriodId);
-    delete previous[key];
-  }
+    if (detail.originalPeriodId && detail.originalPeriodId !== periodId) {
+      const previous = ensureSchedule(detail.originalPeriodId);
+      if (!detail.originalEntry || previous[detail.key] === detail.originalEntry) {
+        delete previous[detail.key];
+      }
+    }
+  });
 
   persistState();
   closeModal();
@@ -928,23 +1107,26 @@ elements.assignmentForm.addEventListener('submit', (event) => {
 });
 
 elements.removeAssignment.addEventListener('click', () => {
-  if (!state.assignmentEditing) return;
-  const { dayKey, slotCode, originalPeriodId } = state.assignmentEditing;
-  const key = slotKey(dayKey, slotCode);
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
   let removed = false;
 
-  if (state.view === 'period') {
-    const schedule = ensureSchedule(state.selectedEntity);
-    removed = Boolean(schedule[key]);
-    delete schedule[key];
-  } else {
-    const sourcePeriod = originalPeriodId;
-    if (sourcePeriod) {
-      const schedule = ensureSchedule(sourcePeriod);
-      removed = Boolean(schedule[key]);
-      delete schedule[key];
+  details.forEach((detail) => {
+    if (state.view === 'period') {
+      const schedule = ensureSchedule(state.selectedEntity);
+      if (schedule[detail.key]) {
+        delete schedule[detail.key];
+        removed = true;
+      }
+    } else if (detail.originalPeriodId) {
+      const schedule = ensureSchedule(detail.originalPeriodId);
+      if (schedule[detail.key]) {
+        delete schedule[detail.key];
+        removed = true;
+      }
     }
-  }
+  });
 
   if (removed) {
     persistState();
@@ -991,9 +1173,18 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
 }
 
 function updateSuggestions() {
-  if (!state.assignmentEditing) return;
-  const { dayKey, slotCode, originalPeriodId, originalEntry } = state.assignmentEditing;
-  const key = slotKey(dayKey, slotCode);
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
+
+  if (state.assignmentEditing.multi) {
+    elements.suggestions.innerHTML =
+      '<span>Seleção múltipla ativa. Conflitos são verificados ao salvar.</span>';
+    return;
+  }
+
+  const detail = details[0];
+  const key = detail.key;
   const periodId = elements.assignmentPeriod.value;
   const professorId = elements.assignmentProfessor.value;
   const roomId = elements.assignmentRoom.value;
@@ -1004,7 +1195,7 @@ function updateSuggestions() {
     return !Object.entries(state.schedule).some(([pId, slots]) => {
       const entry = slots[key];
       if (!entry) return false;
-      const isSameRecord = originalEntry && entry === originalEntry && pId === originalPeriodId;
+      const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
       if (isSameRecord) return false;
       return entry.roomId === room.id;
     });
@@ -1015,7 +1206,7 @@ function updateSuggestions() {
     return !Object.entries(state.schedule).some(([pId, slots]) => {
       const entry = slots[key];
       if (!entry) return false;
-      const isSameRecord = originalEntry && entry === originalEntry && pId === originalPeriodId;
+      const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
       if (isSameRecord) return false;
       return entry.professorId === professor.id;
     });
@@ -1025,10 +1216,10 @@ function updateSuggestions() {
   if (periodId) {
     const entry = state.schedule[periodId]?.[key];
     if (entry) {
-      const discipline = getDisciplineById(entry.disciplineId);
+      const disciplineExisting = getDisciplineById(entry.disciplineId);
       periodConflicts.push(
         `Período já possui ${
-          discipline ? formatDisciplineLabel(discipline) : 'outra disciplina'
+          disciplineExisting ? formatDisciplineLabel(disciplineExisting) : 'outra disciplina'
         } neste horário.`
       );
     }
@@ -1198,10 +1389,13 @@ function applyStateFromData(data) {
   state.selectedEntity = data.selectedEntity || '';
   state.assignmentEditing = null;
   state.entityEditing = null;
+  state.selectedSlots = new Set();
+  state.multiSelectMode = false;
   elements.viewTypeSelect.value = state.view;
   sortAllCollections();
   refreshLists();
   updateEntitySelector();
+  updateSelectionUI();
 }
 
 function restoreStateFromStorage(options = {}) {
@@ -1297,6 +1491,7 @@ function clearAllData() {
   state.selectedEntity = '';
   state.assignmentEditing = null;
   state.entityEditing = null;
+  clearSelectedSlots();
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
   elements.viewTypeSelect.value = state.view;
   resetSearchFilters();
@@ -1361,6 +1556,40 @@ function bindManagementPanel() {
     }
     closeManagementPanel();
   });
+}
+
+function bindSelectionControls() {
+  const { toggleMultiSelect, editSelection, clearSelection } = elements;
+
+  if (toggleMultiSelect) {
+    toggleMultiSelect.addEventListener('click', () => {
+      state.multiSelectMode = !state.multiSelectMode;
+      updateSelectionUI();
+    });
+  }
+
+  if (editSelection) {
+    editSelection.addEventListener('click', () => {
+      if (!state.selectedEntity) {
+        alert('Selecione um item para editar o horário.');
+        return;
+      }
+      if (!state.selectedSlots.size) {
+        alert('Selecione ao menos um horário para editar.');
+        return;
+      }
+      const slots = Array.from(state.selectedSlots).map(parseSlotKey);
+      openAssignmentModalForSlots(slots);
+    });
+  }
+
+  if (clearSelection) {
+    clearSelection.addEventListener('click', () => {
+      if (!state.selectedSlots.size) return;
+      clearSelectedSlots({ preserveMode: true });
+      renderSchedule();
+    });
+  }
 }
 
 function bindSearchFilters() {
@@ -1460,12 +1689,14 @@ function bindForms() {
 }
 
 elements.viewTypeSelect.addEventListener('change', (event) => {
+  clearSelectedSlots();
   state.view = event.target.value;
   updateEntitySelector();
   persistState();
 });
 
 elements.entitySelector.addEventListener('change', (event) => {
+  clearSelectedSlots({ preserveMode: true });
   state.selectedEntity = event.target.value;
   renderSchedule();
   persistState();
@@ -1475,8 +1706,10 @@ function init() {
   bindForms();
   bindStorageControls();
   bindManagementPanel();
+  bindSelectionControls();
   bindSearchFilters();
   resetSearchFilters();
+  updateSelectionUI();
   setStorageFeedback('');
   const restored = restoreStateFromStorage();
   if (!restored) {
@@ -1484,6 +1717,7 @@ function init() {
     elements.viewTypeSelect.value = state.view;
     updateEntitySelector();
   }
+  updateSelectionUI();
 }
 
 if (document.readyState === 'loading') {
