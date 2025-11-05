@@ -28,6 +28,91 @@ const searchQueries = {
 
 let activePanelKey = null;
 
+const disciplineColorPalette = [
+  '#f94144',
+  '#f3722c',
+  '#f8961e',
+  '#f9c74f',
+  '#90be6d',
+  '#43aa8b',
+  '#577590',
+  '#277da1',
+  '#9b5de5',
+  '#f15bb5',
+  '#00bbf9',
+  '#00f5d4'
+];
+
+function normalizeColorValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function pickDisciplineColor(usedColors = new Set()) {
+  for (const candidate of disciplineColorPalette) {
+    if (!usedColors.has(candidate)) {
+      return candidate;
+    }
+  }
+  if (!disciplineColorPalette.length) return '';
+  const index = usedColors.size % disciplineColorPalette.length;
+  return disciplineColorPalette[index];
+}
+
+function assignColorToDiscipline(discipline) {
+  if (!discipline || normalizeColorValue(discipline.color)) return;
+  const usedColors = new Set(
+    state.disciplines
+      .filter((item) => item && item !== discipline && normalizeColorValue(item.color))
+      .map((item) => normalizeColorValue(item.color))
+  );
+  const color = pickDisciplineColor(usedColors);
+  if (color) {
+    discipline.color = color;
+  }
+}
+
+function ensureDisciplineColors() {
+  const used = new Set();
+  state.disciplines.forEach((discipline) => {
+    const value = normalizeColorValue(discipline?.color);
+    if (value) {
+      discipline.color = value;
+      used.add(value);
+    }
+  });
+  state.disciplines.forEach((discipline) => {
+    if (!discipline) return;
+    const value = normalizeColorValue(discipline.color);
+    if (value) return;
+    const color = pickDisciplineColor(used);
+    if (color) {
+      discipline.color = color;
+      used.add(color);
+    }
+  });
+}
+
+function colorWithAlpha(color, alpha = 0.18) {
+  const value = normalizeColorValue(color);
+  if (!value) return '';
+  if (!value.startsWith('#')) return '';
+  let hex = value.slice(1);
+  if (hex.length === 3) {
+    hex = hex
+      .split('')
+      .map((char) => char + char)
+      .join('');
+  }
+  if (hex.length !== 6) return '';
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  if ([r, g, b].some((component) => Number.isNaN(component))) {
+    return '';
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
 
@@ -112,6 +197,7 @@ const elements = {
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
   disciplineList: document.getElementById('discipline-list'),
+  professorDisciplineSelect: document.getElementById('professor-discipline'),
   entityMenu: document.querySelector('.entity-menu'),
   menuButtons: document.querySelectorAll('.menu-button'),
   managementPanel: document.getElementById('management-panel'),
@@ -165,6 +251,15 @@ function matchesSearchQuery(item, type, query) {
   if (!query) return true;
   const name = normalizeText(item?.name || '');
   if (name.includes(query)) return true;
+  if (type === 'professor') {
+    const discipline = getDisciplineById(item?.disciplineId);
+    if (discipline) {
+      const disciplineName = normalizeText(discipline.name);
+      if (disciplineName.includes(query)) return true;
+      const disciplineCode = normalizeText(discipline.code);
+      if (disciplineCode && disciplineCode.includes(query)) return true;
+    }
+  }
   if (type === 'discipline') {
     const code = normalizeText(item?.code || '');
     if (code && code.includes(query)) return true;
@@ -276,6 +371,7 @@ function renderEntityList(list, container, type) {
       nameInput.placeholder = 'Nome';
       form.appendChild(nameInput);
 
+      let professorDisciplineSelect = null;
       let codeInput = null;
       let periodSelect = null;
       if (type === 'discipline') {
@@ -303,6 +399,24 @@ function renderEntityList(list, container, type) {
 
         periodSelect.value = item.periodId || '';
         form.appendChild(periodSelect);
+      } else if (type === 'professor') {
+        professorDisciplineSelect = document.createElement('select');
+        professorDisciplineSelect.className = 'inline-select';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Disciplina (opcional)';
+        professorDisciplineSelect.appendChild(defaultOption);
+
+        state.disciplines.forEach((discipline) => {
+          const option = document.createElement('option');
+          option.value = discipline.id;
+          option.textContent = formatDisciplineLabel(discipline);
+          professorDisciplineSelect.appendChild(option);
+        });
+
+        professorDisciplineSelect.value = item.disciplineId || '';
+        form.appendChild(professorDisciplineSelect);
       }
 
       const actions = document.createElement('div');
@@ -341,6 +455,12 @@ function renderEntityList(list, container, type) {
             return;
           }
           updates.periodId = selectedPeriod;
+        } else if (type === 'professor') {
+          const selectedDiscipline = professorDisciplineSelect?.value || '';
+          const isValidDiscipline = state.disciplines.some(
+            (discipline) => discipline.id === selectedDiscipline
+          );
+          updates.disciplineId = isValidDiscipline ? selectedDiscipline : '';
         }
 
         saveEntityEdit(type, item.id, updates);
@@ -353,6 +473,16 @@ function renderEntityList(list, container, type) {
 
       const heading = document.createElement('div');
       heading.className = 'entity-heading';
+
+      if (type === 'discipline') {
+        const color = getDisciplineColor(item);
+        if (color) {
+          const swatch = document.createElement('span');
+          swatch.className = 'entity-color-swatch';
+          swatch.style.setProperty('--discipline-color', color);
+          heading.appendChild(swatch);
+        }
+      }
 
       if (type === 'discipline' && item.code) {
         const codeBadge = document.createElement('span');
@@ -374,6 +504,16 @@ function renderEntityList(list, container, type) {
         meta.className = 'entity-meta';
         meta.textContent = period ? period.name : 'Sem período';
         info.appendChild(meta);
+      }
+
+      if (type === 'professor') {
+        const discipline = getDisciplineById(item.disciplineId);
+        if (discipline) {
+          const meta = document.createElement('span');
+          meta.className = 'entity-meta';
+          meta.textContent = `Disciplina vinculada: ${formatDisciplineLabel(discipline)}`;
+          info.appendChild(meta);
+        }
       }
 
       li.appendChild(info);
@@ -470,12 +610,14 @@ function toggleManagementPanel(panelKey) {
 }
 
 function refreshLists() {
+  ensureDisciplineColors();
   sortAllCollections();
   renderEntityList(state.periods, elements.periodList, 'period');
   renderEntityList(state.professors, elements.professorList, 'professor');
   renderEntityList(state.rooms, elements.roomList, 'room');
   renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
   updateDisciplinePeriodOptions();
+  updateProfessorDisciplineOptions();
 }
 
 function startEntityEditing(type, id) {
@@ -505,6 +647,8 @@ function saveEntityEdit(type, id, updates) {
     if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
       moveDisciplineAssignments(id, previousPeriod, newPeriod);
     }
+  } else if (type === 'professor') {
+    entity.disciplineId = updates.disciplineId || '';
   }
 
   sortStateCollection(type);
@@ -576,9 +720,19 @@ function deleteEntity(type, id) {
     if (removedDisciplineIds.length) {
       state.disciplines = state.disciplines.filter((discipline) => discipline.periodId !== id);
       purgeSchedule((periodId, entry) => removedDisciplineIds.includes(entry.disciplineId));
+      state.professors.forEach((professor) => {
+        if (removedDisciplineIds.includes(professor.disciplineId)) {
+          professor.disciplineId = '';
+        }
+      });
     }
   } else if (type === 'discipline') {
     purgeSchedule((periodId, entry) => entry.disciplineId === id);
+    state.professors.forEach((professor) => {
+      if (professor.disciplineId === id) {
+        professor.disciplineId = '';
+      }
+    });
   } else if (type === 'professor') {
     purgeSchedule((periodId, entry) => entry.professorId === id);
   } else if (type === 'room') {
@@ -616,6 +770,21 @@ function updateDisciplinePeriodOptions() {
   });
 }
 
+function updateProfessorDisciplineOptions() {
+  const { professorDisciplineSelect } = elements;
+  if (!professorDisciplineSelect) return;
+  const currentValue = professorDisciplineSelect.value;
+  professorDisciplineSelect.innerHTML = '<option value="">Disciplina (opcional)</option>';
+  state.disciplines.forEach((discipline) => {
+    const option = document.createElement('option');
+    option.value = discipline.id;
+    option.textContent = formatDisciplineLabel(discipline);
+    professorDisciplineSelect.appendChild(option);
+  });
+  const hasCurrent = state.disciplines.some((discipline) => discipline.id === currentValue);
+  professorDisciplineSelect.value = hasCurrent ? currentValue : '';
+}
+
 function updateEntitySelector() {
   const { entitySelector } = elements;
   entitySelector.innerHTML = '<option value="">Escolha um item</option>';
@@ -626,7 +795,14 @@ function updateEntitySelector() {
   source.forEach((item) => {
     const option = document.createElement('option');
     option.value = item.id;
-    option.textContent = item.name;
+    let label = item.name;
+    if (state.view === 'professor') {
+      const discipline = getDisciplineById(item.disciplineId);
+      if (discipline) {
+        label = `${item.name} • ${formatDisciplineLabel(discipline)}`;
+      }
+    }
+    option.textContent = label;
     entitySelector.appendChild(option);
   });
   if (!source.some((item) => item.id === state.selectedEntity)) {
@@ -643,6 +819,10 @@ function updateEntitySelector() {
 
 function getDisciplineById(id) {
   return state.disciplines.find((d) => d.id === id) || null;
+}
+
+function getDisciplineColor(discipline) {
+  return normalizeColorValue(discipline?.color);
 }
 
 function getPeriodById(id) {
@@ -791,7 +971,19 @@ function buildCellContent(assignments) {
       if (period) lines.push(`<span class="badge period">${period.name}</span>`);
       if (professor) lines.push(`<span class="badge professor">${professor.name}</span>`);
       if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
-      return `<div class="slot-content">${lines.join('')}</div>`;
+      const classes = ['slot-content'];
+      const styleParts = [];
+      const baseColor = getDisciplineColor(discipline);
+      if (baseColor) {
+        classes.push('with-discipline-color');
+        styleParts.push(`--discipline-color: ${baseColor}`);
+        const fill = colorWithAlpha(baseColor);
+        if (fill) {
+          styleParts.push(`--discipline-fill: ${fill}`);
+        }
+      }
+      const styleAttr = styleParts.length ? ` style="${styleParts.join('; ')}"` : '';
+      return `<div class="${classes.join(' ')}"${styleAttr}>${lines.join('')}</div>`;
     })
     .join('');
 }
@@ -1212,6 +1404,11 @@ function updateSuggestions() {
     });
   });
 
+  const availableProfessorNames = availableProfessors.map((professor) => {
+    const linked = getDisciplineById(professor.disciplineId);
+    return linked ? `${professor.name} (${formatDisciplineLabel(linked)})` : professor.name;
+  });
+
   const periodConflicts = [];
   if (periodId) {
     const entry = state.schedule[periodId]?.[key];
@@ -1257,10 +1454,32 @@ function updateSuggestions() {
   suggestions.push(
     `<span><strong>Professores disponíveis:</strong> ${
       availableProfessors.length
-        ? availableProfessors.map((p) => p.name).join(', ')
+        ? availableProfessorNames.join(', ')
         : 'Nenhum professor livre'
     }</span>`
   );
+
+  if (disciplineId) {
+    const recommendedProfessors = availableProfessors.filter(
+      (professor) => professor.disciplineId === disciplineId
+    );
+    if (recommendedProfessors.length) {
+      suggestions.push(
+        `<span><strong>Professores vinculados à disciplina:</strong> ${recommendedProfessors
+          .map((professor) => professor.name)
+          .join(', ')}</span>`
+      );
+    }
+  }
+
+  if (disciplineId && professorId) {
+    const selectedProfessor = getProfessorById(professorId);
+    if (selectedProfessor?.disciplineId && selectedProfessor.disciplineId !== disciplineId) {
+      suggestions.push(
+        '<span class="suggestion-warning">Professor selecionado não está vinculado a esta disciplina.</span>'
+      );
+    }
+  }
 
   periodConflicts.forEach((conflict) => {
     suggestions.push(`<span class="suggestion-warning">${conflict}</span>`);
@@ -1291,7 +1510,10 @@ function populateModalSelects() {
   state.professors.forEach((professor) => {
     const option = document.createElement('option');
     option.value = professor.id;
-    option.textContent = professor.name;
+    const linkedDiscipline = getDisciplineById(professor.disciplineId);
+    option.textContent = linkedDiscipline
+      ? `${professor.name} — ${formatDisciplineLabel(linkedDiscipline)}`
+      : professor.name;
     elements.assignmentProfessor.appendChild(option);
   });
 
@@ -1376,12 +1598,18 @@ function rebuildCounters() {
 function applyStateFromData(data) {
   if (!data || typeof data !== 'object') return;
   state.periods = Array.isArray(data.periods) ? data.periods : [];
-  state.professors = Array.isArray(data.professors) ? data.professors : [];
+  state.professors = Array.isArray(data.professors)
+    ? data.professors.map((professor) => ({
+        ...professor,
+        disciplineId: typeof professor?.disciplineId === 'string' ? professor.disciplineId : ''
+      }))
+    : [];
   state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
   state.disciplines = Array.isArray(data.disciplines)
     ? data.disciplines.map((discipline) => ({
         ...discipline,
-        code: typeof discipline?.code === 'string' ? discipline.code : ''
+        code: typeof discipline?.code === 'string' ? discipline.code : '',
+        color: typeof discipline?.color === 'string' ? discipline.color : ''
       }))
     : [];
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
@@ -1392,6 +1620,7 @@ function applyStateFromData(data) {
   state.selectedSlots = new Set();
   state.multiSelectMode = false;
   elements.viewTypeSelect.value = state.view;
+  ensureDisciplineColors();
   sortAllCollections();
   refreshLists();
   updateEntitySelector();
@@ -1639,7 +1868,14 @@ function bindForms() {
     const input = document.getElementById('professor-name');
     const name = input.value.trim();
     if (!name) return;
-    state.professors.push({ id: generateId('professor'), name });
+    const disciplineSelect = elements.professorDisciplineSelect;
+    const selectedDisciplineId = disciplineSelect ? disciplineSelect.value : '';
+    const validDisciplineId = state.disciplines.some(
+      (discipline) => discipline.id === selectedDisciplineId
+    )
+      ? selectedDisciplineId
+      : '';
+    state.professors.push({ id: generateId('professor'), name, disciplineId: validDisciplineId });
     input.value = '';
     refreshLists();
     updateEntitySelector();
@@ -1672,12 +1908,14 @@ function bindForms() {
       alert('Já existe uma disciplina com este código.');
       return;
     }
-    state.disciplines.push({
+    const discipline = {
       id: generateId('discipline'),
       name,
       periodId: period,
       code: codeValue
-    });
+    };
+    assignColorToDiscipline(discipline);
+    state.disciplines.push(discipline);
     nameInput.value = '';
     if (elements.disciplineCodeInput) {
       elements.disciplineCodeInput.value = '';
