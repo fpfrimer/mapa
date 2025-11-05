@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa de Horários Acadêmicos</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Mapa de Horários Acadêmicos</h1>
+    <p>Cadastre períodos, professores, salas e disciplinas para montar o cronograma semanal.</p>
+  </header>
+
+  <main>
+    <aside class="side-panel">
+      <section class="panel-section">
+        <h2>Períodos</h2>
+        <form id="period-form" class="inline-form">
+          <input type="text" id="period-name" placeholder="Nome do período" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <ul id="period-list" class="entity-list"></ul>
+      </section>
+
+      <section class="panel-section">
+        <h2>Professores</h2>
+        <form id="professor-form" class="inline-form">
+          <input type="text" id="professor-name" placeholder="Nome do professor" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <ul id="professor-list" class="entity-list"></ul>
+      </section>
+
+      <section class="panel-section">
+        <h2>Salas</h2>
+        <form id="room-form" class="inline-form">
+          <input type="text" id="room-name" placeholder="Identificação da sala" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <ul id="room-list" class="entity-list"></ul>
+      </section>
+
+      <section class="panel-section">
+        <h2>Disciplinas</h2>
+        <form id="discipline-form" class="inline-form">
+          <input type="text" id="discipline-name" placeholder="Nome da disciplina" required />
+          <select id="discipline-period" required>
+            <option value="">Período</option>
+          </select>
+          <button type="submit">Adicionar</button>
+        </form>
+        <ul id="discipline-list" class="entity-list"></ul>
+      </section>
+    </aside>
+
+    <section class="schedule-panel">
+      <div class="view-controls">
+        <div class="control-group">
+          <label for="view-type">Visualizar por:</label>
+          <select id="view-type">
+            <option value="period">Período</option>
+            <option value="professor">Professor</option>
+            <option value="room">Sala</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="entity-selector">Selecionar:</label>
+          <select id="entity-selector">
+            <option value="">Escolha um item</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="schedule-container" class="schedule-container">
+        <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="assignment-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
+      <h2>Editar horário</h2>
+      <form id="assignment-form" class="modal-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Dia</label>
+            <input type="text" id="assignment-day" readonly />
+          </div>
+          <div class="form-field">
+            <label>Bloco</label>
+            <input type="text" id="assignment-slot" readonly />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="assignment-discipline">Disciplina</label>
+          <select id="assignment-discipline" required></select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="assignment-period">Período</label>
+            <select id="assignment-period" required></select>
+          </div>
+          <div class="form-field">
+            <label for="assignment-professor">Professor</label>
+            <select id="assignment-professor" required></select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="assignment-room">Sala</label>
+          <select id="assignment-room" required></select>
+        </div>
+
+        <div id="suggestions" class="suggestions"></div>
+
+        <div class="modal-actions">
+          <button type="submit" class="primary">Salvar</button>
+          <button type="button" id="remove-assignment" class="danger">Remover horário</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <template id="cell-template">
+    <button class="slot-cell" type="button"></button>
+  </template>
+
+  <script src="script.js"></script>
+</body>
+</html>
