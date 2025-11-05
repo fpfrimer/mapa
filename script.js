@@ -17,6 +17,15 @@ let counters = {
   discipline: 1
 };
 
+const searchQueries = {
+  period: '',
+  professor: '',
+  room: '',
+  discipline: ''
+};
+
+let activePanelKey = null;
+
 const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
 
@@ -84,6 +93,16 @@ const elements = {
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
   disciplineList: document.getElementById('discipline-list'),
+  entityMenu: document.querySelector('.entity-menu'),
+  menuButtons: document.querySelectorAll('.menu-button'),
+  managementPanel: document.getElementById('management-panel'),
+  panelTitle: document.getElementById('panel-title'),
+  panelClose: document.querySelector('.panel-close'),
+  panelSections: document.querySelectorAll('#management-panel .panel-section'),
+  periodSearch: document.getElementById('period-search'),
+  professorSearch: document.getElementById('professor-search'),
+  roomSearch: document.getElementById('room-search'),
+  disciplineSearch: document.getElementById('discipline-search'),
   disciplinePeriodSelect: document.getElementById('discipline-period'),
   viewTypeSelect: document.getElementById('view-type'),
   entitySelector: document.getElementById('entity-selector'),
@@ -107,25 +126,60 @@ const elements = {
   storageFeedback: document.getElementById('storage-feedback')
 };
 
+const menuButtons = Array.from(elements.menuButtons || []);
+const panelSections = Array.from(elements.panelSections || []);
+
+function normalizeText(value) {
+  return (value || '')
+    .toString()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+}
+
+function matchesSearchQuery(item, type, query) {
+  if (!query) return true;
+  const name = normalizeText(item?.name || '');
+  if (name.includes(query)) return true;
+  if (type === 'discipline') {
+    const period = getPeriodById(item?.periodId);
+    if (period && normalizeText(period.name).includes(query)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function generateId(type) {
   return `${type}-${counters[type]++}`;
 }
 
 function renderEntityList(list, container, type) {
   container.innerHTML = '';
-  if (!list.length) {
+  const query = normalizeText(searchQueries[type] || '');
+  const filtered = list
+    .map((item) => {
+      const isEditing =
+        state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === item.id;
+      return { item, isEditing };
+    })
+    .filter(({ item, isEditing }) => {
+      if (!query) return true;
+      if (isEditing) return true;
+      return matchesSearchQuery(item, type, query);
+    });
+
+  if (!filtered.length) {
     const empty = document.createElement('li');
     empty.className = 'entity-empty';
-    empty.textContent = 'Nenhum item cadastrado.';
+    empty.textContent = list.length ? 'Nenhum item encontrado.' : 'Nenhum item cadastrado.';
     container.appendChild(empty);
     return;
   }
 
-  list.forEach((item) => {
+  filtered.forEach(({ item, isEditing }) => {
     const li = document.createElement('li');
     li.className = 'entity-item';
-    const isEditing =
-      state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === item.id;
 
     if (isEditing) {
       const form = document.createElement('form');
@@ -237,6 +291,69 @@ function renderEntityList(list, container, type) {
 
     container.appendChild(li);
   });
+}
+
+function openManagementPanel(panelKey) {
+  const { managementPanel, panelTitle } = elements;
+  if (!managementPanel) return;
+  activePanelKey = panelKey;
+  managementPanel.classList.remove('hidden');
+  managementPanel.setAttribute('aria-hidden', 'false');
+
+  let currentTitle = 'Gerenciar';
+  panelSections.forEach((section) => {
+    const matches = section.dataset.panel === panelKey;
+    section.hidden = !matches;
+    if (matches) {
+      currentTitle = section.dataset.title || currentTitle;
+      section.scrollTop = 0;
+      const scrollable = section.querySelector('.list-container');
+      if (scrollable) {
+        scrollable.scrollTop = 0;
+      }
+    }
+  });
+
+  if (panelTitle) {
+    panelTitle.textContent = currentTitle;
+  }
+
+  menuButtons.forEach((button) => {
+    const isActive = button.dataset.panel === panelKey;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-expanded', String(isActive));
+  });
+
+  managementPanel.focus();
+}
+
+function closeManagementPanel() {
+  const { managementPanel, panelTitle } = elements;
+  if (!managementPanel) return;
+  managementPanel.classList.add('hidden');
+  managementPanel.setAttribute('aria-hidden', 'true');
+  activePanelKey = null;
+  panelSections.forEach((section) => {
+    section.hidden = true;
+  });
+  menuButtons.forEach((button) => {
+    button.classList.remove('active');
+    button.setAttribute('aria-expanded', 'false');
+  });
+  if (panelTitle) {
+    panelTitle.textContent = 'Gerenciar';
+  }
+}
+
+function toggleManagementPanel(panelKey) {
+  const { managementPanel } = elements;
+  if (!managementPanel) return;
+  const isOpen = !managementPanel.classList.contains('hidden');
+  if (isOpen && activePanelKey === panelKey) {
+    closeManagementPanel();
+  } else {
+    openManagementPanel(panelKey);
+  }
 }
 
 function refreshLists() {
@@ -1075,6 +1192,7 @@ function clearAllData() {
   state.entityEditing = null;
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
   elements.viewTypeSelect.value = state.view;
+  resetSearchFilters();
   refreshLists();
   updateEntitySelector();
   localStorage.removeItem(STORAGE_KEY);
@@ -1098,6 +1216,68 @@ function bindStorageControls() {
   if (elements.clearBrowserButton) {
     elements.clearBrowserButton.addEventListener('click', clearAllData);
   }
+}
+
+function bindManagementPanel() {
+  if (!elements.managementPanel) return;
+
+  menuButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const panelKey = button.dataset.panel;
+      if (panelKey) {
+        toggleManagementPanel(panelKey);
+      }
+    });
+  });
+
+  if (elements.panelClose) {
+    elements.panelClose.addEventListener('click', () => {
+      closeManagementPanel();
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !elements.managementPanel.classList.contains('hidden')) {
+      closeManagementPanel();
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    const { managementPanel, entityMenu } = elements;
+    if (!managementPanel || managementPanel.classList.contains('hidden')) return;
+    if (managementPanel.contains(event.target)) return;
+    if (entityMenu && entityMenu.contains(event.target)) return;
+    closeManagementPanel();
+  });
+}
+
+function bindSearchFilters() {
+  const mappings = [
+    ['period', elements.periodSearch],
+    ['professor', elements.professorSearch],
+    ['room', elements.roomSearch],
+    ['discipline', elements.disciplineSearch]
+  ];
+
+  mappings.forEach(([type, input]) => {
+    if (!input) return;
+    input.addEventListener('input', (event) => {
+      searchQueries[type] = event.target.value;
+      refreshLists();
+    });
+  });
+}
+
+function resetSearchFilters() {
+  searchQueries.period = '';
+  searchQueries.professor = '';
+  searchQueries.room = '';
+  searchQueries.discipline = '';
+
+  if (elements.periodSearch) elements.periodSearch.value = '';
+  if (elements.professorSearch) elements.professorSearch.value = '';
+  if (elements.roomSearch) elements.roomSearch.value = '';
+  if (elements.disciplineSearch) elements.disciplineSearch.value = '';
 }
 
 function bindForms() {
@@ -1169,6 +1349,9 @@ elements.entitySelector.addEventListener('change', (event) => {
 function init() {
   bindForms();
   bindStorageControls();
+  bindManagementPanel();
+  bindSearchFilters();
+  resetSearchFilters();
   setStorageFeedback('');
   const restored = restoreStateFromStorage();
   if (!restored) {
