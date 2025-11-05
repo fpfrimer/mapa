@@ -89,6 +89,7 @@ const elements = {
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
   disciplineForm: document.getElementById('discipline-form'),
+  disciplineCodeInput: document.getElementById('discipline-code'),
   periodList: document.getElementById('period-list'),
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
@@ -142,12 +143,37 @@ function matchesSearchQuery(item, type, query) {
   const name = normalizeText(item?.name || '');
   if (name.includes(query)) return true;
   if (type === 'discipline') {
+    const code = normalizeText(item?.code || '');
+    if (code && code.includes(query)) return true;
+  }
+  if (type === 'discipline') {
     const period = getPeriodById(item?.periodId);
     if (period && normalizeText(period.name).includes(query)) {
       return true;
     }
   }
   return false;
+}
+
+function normalizeCode(value) {
+  return normalizeText(value || '').trim();
+}
+
+function isDuplicateDisciplineCode(code, ignoreId = null) {
+  const normalized = normalizeCode(code);
+  if (!normalized) return false;
+  return state.disciplines.some((discipline) => {
+    if (!discipline) return false;
+    if (ignoreId && discipline.id === ignoreId) return false;
+    return normalizeCode(discipline.code) === normalized;
+  });
+}
+
+function formatDisciplineLabel(discipline) {
+  if (!discipline) return '';
+  const code = discipline.code ? discipline.code.trim() : '';
+  const name = discipline.name || '';
+  return code ? `${code} · ${name}` : name;
 }
 
 function generateId(type) {
@@ -192,8 +218,15 @@ function renderEntityList(list, container, type) {
       nameInput.placeholder = 'Nome';
       form.appendChild(nameInput);
 
+      let codeInput = null;
       let periodSelect = null;
       if (type === 'discipline') {
+        codeInput = document.createElement('input');
+        codeInput.type = 'text';
+        codeInput.placeholder = 'Código (opcional)';
+        codeInput.value = item.code || '';
+        form.appendChild(codeInput);
+
         periodSelect = document.createElement('select');
         periodSelect.required = true;
         periodSelect.className = 'inline-select';
@@ -238,6 +271,12 @@ function renderEntityList(list, container, type) {
 
         const updates = { name };
         if (type === 'discipline') {
+          const codeValue = codeInput?.value.trim() || '';
+          if (codeValue && isDuplicateDisciplineCode(codeValue, item.id)) {
+            alert('Já existe uma disciplina com este código.');
+            return;
+          }
+          updates.code = codeValue;
           const selectedPeriod = periodSelect?.value || '';
           if (!selectedPeriod) {
             alert('Selecione um período para a disciplina.');
@@ -254,10 +293,22 @@ function renderEntityList(list, container, type) {
       const info = document.createElement('div');
       info.className = 'entity-info';
 
+      const heading = document.createElement('div');
+      heading.className = 'entity-heading';
+
+      if (type === 'discipline' && item.code) {
+        const codeBadge = document.createElement('span');
+        codeBadge.className = 'entity-code';
+        codeBadge.textContent = item.code;
+        heading.appendChild(codeBadge);
+      }
+
       const name = document.createElement('span');
       name.className = 'entity-name';
       name.textContent = item.name;
-      info.appendChild(name);
+      heading.appendChild(name);
+
+      info.appendChild(heading);
 
       if (type === 'discipline') {
         const period = getPeriodById(item.periodId);
@@ -274,15 +325,19 @@ function renderEntityList(list, container, type) {
 
       const editButton = document.createElement('button');
       editButton.type = 'button';
-      editButton.className = 'link-button';
-      editButton.textContent = 'Editar';
+      editButton.className = 'icon-button';
+      editButton.innerHTML =
+        '<span aria-hidden="true">✏️</span><span class="visually-hidden">Editar</span>';
+      editButton.title = 'Editar';
       editButton.addEventListener('click', () => startEntityEditing(type, item.id));
       actions.appendChild(editButton);
 
       const removeButton = document.createElement('button');
       removeButton.type = 'button';
-      removeButton.className = 'danger-link';
-      removeButton.textContent = 'Remover';
+      removeButton.className = 'icon-button danger';
+      removeButton.innerHTML =
+        '<span aria-hidden="true">🗑️</span><span class="visually-hidden">Remover</span>';
+      removeButton.title = 'Remover';
       removeButton.addEventListener('click', () => confirmRemoval(type, item));
       actions.appendChild(removeButton);
 
@@ -386,6 +441,7 @@ function saveEntityEdit(type, id, updates) {
   if (type === 'discipline') {
     const previousPeriod = entity.periodId;
     const newPeriod = updates.periodId || previousPeriod;
+    entity.code = updates.code || '';
     entity.periodId = newPeriod;
     if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
       moveDisciplineAssignments(id, previousPeriod, newPeriod);
@@ -594,7 +650,7 @@ function buildCellContent(assignments) {
       const room = getRoomById(data.roomId);
       const period = getPeriodById(periodId);
       const lines = [];
-      if (discipline) lines.push(`<strong>${discipline.name}</strong>`);
+      if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
       if (period) lines.push(`<span class="badge period">${period.name}</span>`);
       if (professor) lines.push(`<span class="badge professor">${professor.name}</span>`);
       if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
@@ -869,7 +925,9 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
   if (existingPeriod && !isSameOriginal) {
     const discipline = getDisciplineById(existingPeriod.disciplineId);
     conflicts.push(
-      `Período já ocupado por ${discipline ? discipline.name : 'outra disciplina'}.`
+      `Período já ocupado por ${
+        discipline ? formatDisciplineLabel(discipline) : 'outra disciplina'
+      }.`
     );
   }
 
@@ -931,7 +989,9 @@ function updateSuggestions() {
     if (entry) {
       const discipline = getDisciplineById(entry.disciplineId);
       periodConflicts.push(
-        `Período já possui ${discipline ? discipline.name : 'outra disciplina'} neste horário.`
+        `Período já possui ${
+          discipline ? formatDisciplineLabel(discipline) : 'outra disciplina'
+        } neste horário.`
       );
     }
   }
@@ -941,7 +1001,9 @@ function updateSuggestions() {
   let disciplinePeriodHint = '';
   if (disciplineInfo) {
     const period = getPeriodById(disciplineInfo.periodId);
-    disciplinePeriodHint = period ? `Disciplina vinculada ao período ${period.name}.` : '';
+    disciplinePeriodHint = period
+      ? `${formatDisciplineLabel(disciplineInfo)} vinculada ao período ${period.name}.`
+      : '';
     if (!periodId) {
       elements.assignmentPeriod.value = disciplineInfo.periodId;
     }
@@ -983,7 +1045,7 @@ function populateModalSelects() {
   state.disciplines.forEach((discipline) => {
     const option = document.createElement('option');
     option.value = discipline.id;
-    option.textContent = discipline.name;
+    option.textContent = formatDisciplineLabel(discipline);
     elements.assignmentDiscipline.appendChild(option);
   });
 
@@ -1086,7 +1148,12 @@ function applyStateFromData(data) {
   state.periods = Array.isArray(data.periods) ? data.periods : [];
   state.professors = Array.isArray(data.professors) ? data.professors : [];
   state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
-  state.disciplines = Array.isArray(data.disciplines) ? data.disciplines : [];
+  state.disciplines = Array.isArray(data.disciplines)
+    ? data.disciplines.map((discipline) => ({
+        ...discipline,
+        code: typeof discipline?.code === 'string' ? discipline.code : ''
+      }))
+    : [];
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
@@ -1245,8 +1312,13 @@ function bindManagementPanel() {
   document.addEventListener('click', (event) => {
     const { managementPanel, entityMenu } = elements;
     if (!managementPanel || managementPanel.classList.contains('hidden')) return;
-    if (managementPanel.contains(event.target)) return;
-    if (entityMenu && entityMenu.contains(event.target)) return;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
+    if (path && path.includes(managementPanel)) return;
+    if (path && entityMenu && path.includes(entityMenu)) return;
+    if (!path) {
+      if (managementPanel.contains(event.target)) return;
+      if (entityMenu && entityMenu.contains(event.target)) return;
+    }
     closeManagementPanel();
   });
 }
@@ -1319,15 +1391,28 @@ function bindForms() {
 
   elements.disciplineForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    const input = document.getElementById('discipline-name');
-    const name = input.value.trim();
+    const nameInput = document.getElementById('discipline-name');
+    const name = nameInput.value.trim();
     const period = elements.disciplinePeriodSelect.value;
+    const codeValue = elements.disciplineCodeInput?.value.trim() || '';
     if (!name || !period) {
       alert('Informe o nome e selecione um período.');
       return;
     }
-    state.disciplines.push({ id: generateId('discipline'), name, periodId: period });
-    input.value = '';
+    if (codeValue && isDuplicateDisciplineCode(codeValue)) {
+      alert('Já existe uma disciplina com este código.');
+      return;
+    }
+    state.disciplines.push({
+      id: generateId('discipline'),
+      name,
+      periodId: period,
+      code: codeValue
+    });
+    nameInput.value = '';
+    if (elements.disciplineCodeInput) {
+      elements.disciplineCodeInput.value = '';
+    }
     elements.disciplinePeriodSelect.value = '';
     refreshLists();
     persistState();
