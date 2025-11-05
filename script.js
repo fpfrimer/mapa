@@ -6,7 +6,8 @@ const state = {
   schedule: {}, // periodId -> { slotKey: { disciplineId, professorId, roomId } }
   view: 'period',
   selectedEntity: '',
-  editing: null
+  assignmentEditing: null,
+  entityEditing: null
 };
 
 let counters = {
@@ -67,6 +68,13 @@ const sessions = [
   }
 ];
 
+const entityCollections = {
+  period: 'periods',
+  professor: 'professors',
+  room: 'rooms',
+  discipline: 'disciplines'
+};
+
 const elements = {
   periodForm: document.getElementById('period-form'),
   professorForm: document.getElementById('professor-form'),
@@ -103,21 +111,265 @@ function generateId(type) {
   return `${type}-${counters[type]++}`;
 }
 
-function renderEntityList(list, container) {
+function renderEntityList(list, container, type) {
   container.innerHTML = '';
+  if (!list.length) {
+    const empty = document.createElement('li');
+    empty.className = 'entity-empty';
+    empty.textContent = 'Nenhum item cadastrado.';
+    container.appendChild(empty);
+    return;
+  }
+
   list.forEach((item) => {
     const li = document.createElement('li');
-    li.textContent = item.name;
+    li.className = 'entity-item';
+    const isEditing =
+      state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === item.id;
+
+    if (isEditing) {
+      const form = document.createElement('form');
+      form.className = 'entity-edit-form';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.required = true;
+      nameInput.value = item.name;
+      nameInput.placeholder = 'Nome';
+      form.appendChild(nameInput);
+
+      let periodSelect = null;
+      if (type === 'discipline') {
+        periodSelect = document.createElement('select');
+        periodSelect.required = true;
+        periodSelect.className = 'inline-select';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Período';
+        periodSelect.appendChild(defaultOption);
+
+        state.periods.forEach((period) => {
+          const option = document.createElement('option');
+          option.value = period.id;
+          option.textContent = period.name;
+          periodSelect.appendChild(option);
+        });
+
+        periodSelect.value = item.periodId || '';
+        form.appendChild(periodSelect);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'entity-edit-actions';
+
+      const saveButton = document.createElement('button');
+      saveButton.type = 'submit';
+      saveButton.className = 'primary';
+      saveButton.textContent = 'Salvar';
+      actions.appendChild(saveButton);
+
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.textContent = 'Cancelar';
+      cancelButton.addEventListener('click', cancelEntityEditing);
+      actions.appendChild(cancelButton);
+
+      form.appendChild(actions);
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const name = nameInput.value.trim();
+        if (!name) return;
+
+        const updates = { name };
+        if (type === 'discipline') {
+          const selectedPeriod = periodSelect?.value || '';
+          if (!selectedPeriod) {
+            alert('Selecione um período para a disciplina.');
+            return;
+          }
+          updates.periodId = selectedPeriod;
+        }
+
+        saveEntityEdit(type, item.id, updates);
+      });
+
+      li.appendChild(form);
+    } else {
+      const info = document.createElement('div');
+      info.className = 'entity-info';
+
+      const name = document.createElement('span');
+      name.className = 'entity-name';
+      name.textContent = item.name;
+      info.appendChild(name);
+
+      if (type === 'discipline') {
+        const period = getPeriodById(item.periodId);
+        const meta = document.createElement('span');
+        meta.className = 'entity-meta';
+        meta.textContent = period ? period.name : 'Sem período';
+        info.appendChild(meta);
+      }
+
+      li.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.className = 'entity-actions';
+
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'link-button';
+      editButton.textContent = 'Editar';
+      editButton.addEventListener('click', () => startEntityEditing(type, item.id));
+      actions.appendChild(editButton);
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'danger-link';
+      removeButton.textContent = 'Remover';
+      removeButton.addEventListener('click', () => confirmRemoval(type, item));
+      actions.appendChild(removeButton);
+
+      li.appendChild(actions);
+    }
+
     container.appendChild(li);
   });
 }
 
 function refreshLists() {
-  renderEntityList(state.periods, elements.periodList);
-  renderEntityList(state.professors, elements.professorList);
-  renderEntityList(state.rooms, elements.roomList);
-  renderEntityList(state.disciplines, elements.disciplineList);
+  renderEntityList(state.periods, elements.periodList, 'period');
+  renderEntityList(state.professors, elements.professorList, 'professor');
+  renderEntityList(state.rooms, elements.roomList, 'room');
+  renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
   updateDisciplinePeriodOptions();
+}
+
+function startEntityEditing(type, id) {
+  state.entityEditing = { type, id };
+  refreshLists();
+}
+
+function cancelEntityEditing() {
+  state.entityEditing = null;
+  refreshLists();
+}
+
+function saveEntityEdit(type, id, updates) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey) return;
+  const list = state[collectionKey];
+  const entity = list.find((item) => item.id === id);
+  if (!entity) return;
+
+  entity.name = updates.name;
+
+  if (type === 'discipline') {
+    const previousPeriod = entity.periodId;
+    const newPeriod = updates.periodId || previousPeriod;
+    entity.periodId = newPeriod;
+    if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
+      moveDisciplineAssignments(id, previousPeriod, newPeriod);
+    }
+  }
+
+  state.entityEditing = null;
+  refreshLists();
+  updateEntitySelector();
+  persistState();
+}
+
+function confirmRemoval(type, item) {
+  let message = `Deseja remover "${item.name}"?`;
+  if (type === 'period') {
+    const relatedDisciplines = state.disciplines.filter((discipline) => discipline.periodId === item.id);
+    if (relatedDisciplines.length) {
+      message =
+        `Remover o período "${item.name}" também apagará ${relatedDisciplines.length} disciplina(s) vinculada(s). Continuar?`;
+    }
+  }
+  const proceed = confirm(message);
+  if (!proceed) return;
+  deleteEntity(type, item.id);
+}
+
+function purgeSchedule(matchFn) {
+  Object.entries(state.schedule).forEach(([periodId, slots]) => {
+    Object.entries(slots).forEach(([key, entry]) => {
+      if (matchFn(periodId, entry, key)) {
+        delete slots[key];
+      }
+    });
+    if (!Object.keys(slots).length) {
+      delete state.schedule[periodId];
+    }
+  });
+}
+
+function moveDisciplineAssignments(disciplineId, fromPeriod, toPeriod) {
+  const origin = state.schedule[fromPeriod];
+  if (!origin) return;
+  Object.entries({ ...origin }).forEach(([key, entry]) => {
+    if (entry.disciplineId !== disciplineId) return;
+    if (!state.schedule[toPeriod]) {
+      state.schedule[toPeriod] = {};
+    }
+    if (!state.schedule[toPeriod][key]) {
+      state.schedule[toPeriod][key] = entry;
+    }
+    delete origin[key];
+  });
+  if (!Object.keys(origin).length) {
+    delete state.schedule[fromPeriod];
+  }
+}
+
+function deleteEntity(type, id) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey) return;
+  const list = state[collectionKey];
+  const index = list.findIndex((item) => item.id === id);
+  if (index === -1) return;
+
+  list.splice(index, 1);
+
+  if (type === 'period') {
+    delete state.schedule[id];
+    const removedDisciplineIds = state.disciplines
+      .filter((discipline) => discipline.periodId === id)
+      .map((discipline) => discipline.id);
+    if (removedDisciplineIds.length) {
+      state.disciplines = state.disciplines.filter((discipline) => discipline.periodId !== id);
+      purgeSchedule((periodId, entry) => removedDisciplineIds.includes(entry.disciplineId));
+    }
+  } else if (type === 'discipline') {
+    purgeSchedule((periodId, entry) => entry.disciplineId === id);
+  } else if (type === 'professor') {
+    purgeSchedule((periodId, entry) => entry.professorId === id);
+  } else if (type === 'room') {
+    purgeSchedule((periodId, entry) => entry.roomId === id);
+  }
+
+  if (state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === id) {
+    state.entityEditing = null;
+  }
+  if (state.view === type && state.selectedEntity === id) {
+    state.selectedEntity = '';
+  }
+
+  if (state.entityEditing) {
+    const editingCollection = entityCollections[state.entityEditing.type];
+    const editingList = editingCollection ? state[editingCollection] : [];
+    if (!editingList || !editingList.some((entity) => entity.id === state.entityEditing.id)) {
+      state.entityEditing = null;
+    }
+  }
+
+  refreshLists();
+  updateEntitySelector();
+  persistState();
 }
 
 function updateDisciplinePeriodOptions() {
@@ -317,7 +569,7 @@ function openAssignmentModal(dayKey, slotCode) {
     alert('Selecione um item para editar o horário.');
     return;
   }
-  state.editing = {
+  state.assignmentEditing = {
     dayKey,
     slotCode,
     originalPeriodId: null,
@@ -333,25 +585,25 @@ function openAssignmentModal(dayKey, slotCode) {
 
   if (state.view === 'period') {
     existing = getAssignmentForPeriod(state.selectedEntity, key);
-    state.editing.originalPeriodId = state.selectedEntity;
+    state.assignmentEditing.originalPeriodId = state.selectedEntity;
   } else if (state.view === 'professor') {
     const result = findAssignmentByProfessor(state.selectedEntity, key);
     if (result) {
       existing = result.data;
-      state.editing.originalPeriodId = result.periodId;
+      state.assignmentEditing.originalPeriodId = result.periodId;
     }
   } else if (state.view === 'room') {
     const result = findAssignmentByRoom(state.selectedEntity, key);
     if (result) {
       existing = result.data;
-      state.editing.originalPeriodId = result.periodId;
+      state.assignmentEditing.originalPeriodId = result.periodId;
     }
   }
 
   if (existing) {
-    state.editing.originalEntry = existing;
+    state.assignmentEditing.originalEntry = existing;
     elements.assignmentDiscipline.value = existing.disciplineId;
-    elements.assignmentPeriod.value = state.editing.originalPeriodId;
+    elements.assignmentPeriod.value = state.assignmentEditing.originalPeriodId;
     elements.assignmentProfessor.value = existing.professorId || '';
     elements.assignmentRoom.value = existing.roomId || '';
   } else {
@@ -389,7 +641,7 @@ function openAssignmentModal(dayKey, slotCode) {
 
 function closeModal() {
   elements.modal.classList.add('hidden');
-  state.editing = null;
+  state.assignmentEditing = null;
 }
 
 elements.modalClose.addEventListener('click', closeModal);
@@ -410,9 +662,9 @@ elements.assignmentPeriod.addEventListener('change', updateSuggestions);
 
 elements.assignmentForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (!state.editing) return;
+  if (!state.assignmentEditing) return;
 
-  const { dayKey, slotCode, originalPeriodId } = state.editing;
+  const { dayKey, slotCode, originalPeriodId } = state.assignmentEditing;
   const disciplineId = elements.assignmentDiscipline.value;
   const periodId = elements.assignmentPeriod.value;
   const professorId = elements.assignmentProfessor.value;
@@ -440,7 +692,7 @@ elements.assignmentForm.addEventListener('submit', (event) => {
     roomId,
     key,
     originalPeriodId,
-    originalEntry: state.editing.originalEntry
+    originalEntry: state.assignmentEditing.originalEntry
   });
   if (conflicts.length) {
     const proceed = confirm(
@@ -465,8 +717,8 @@ elements.assignmentForm.addEventListener('submit', (event) => {
 });
 
 elements.removeAssignment.addEventListener('click', () => {
-  if (!state.editing) return;
-  const { dayKey, slotCode, originalPeriodId } = state.editing;
+  if (!state.assignmentEditing) return;
+  const { dayKey, slotCode, originalPeriodId } = state.assignmentEditing;
   const key = slotKey(dayKey, slotCode);
   let removed = false;
 
@@ -526,8 +778,8 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
 }
 
 function updateSuggestions() {
-  if (!state.editing) return;
-  const { dayKey, slotCode, originalPeriodId, originalEntry } = state.editing;
+  if (!state.assignmentEditing) return;
+  const { dayKey, slotCode, originalPeriodId, originalEntry } = state.assignmentEditing;
   const key = slotKey(dayKey, slotCode);
   const periodId = elements.assignmentPeriod.value;
   const professorId = elements.assignmentProfessor.value;
@@ -721,6 +973,8 @@ function applyStateFromData(data) {
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
+  state.assignmentEditing = null;
+  state.entityEditing = null;
   elements.viewTypeSelect.value = state.view;
   refreshLists();
   updateEntitySelector();
@@ -817,6 +1071,8 @@ function clearAllData() {
   state.schedule = {};
   state.view = 'period';
   state.selectedEntity = '';
+  state.assignmentEditing = null;
+  state.entityEditing = null;
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
   elements.viewTypeSelect.value = state.view;
   refreshLists();

@@ -111,16 +111,119 @@ main {
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.entity-list li {
+.entity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   background: rgba(41, 98, 255, 0.08);
   color: var(--primary-dark);
-  padding: 0.35rem 0.65rem;
-  border-radius: 999px;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+}
+
+.entity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.entity-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.entity-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.entity-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.entity-actions button {
+  border: none;
+  background: none;
   font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.15rem 0.25rem;
+  color: var(--primary-dark);
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.danger-link {
+  color: var(--danger);
+}
+
+.danger-link:hover {
+  text-decoration: underline;
+}
+
+.entity-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.entity-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.entity-edit-form input,
+.entity-edit-form select {
+  flex: 1 1 140px;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.entity-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.entity-edit-actions button {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+button.primary:hover {
+  background: var(--primary-dark);
+}
+
+.entity-edit-actions button:not(.primary) {
+  background: rgba(41, 98, 255, 0.1);
+  color: var(--primary-dark);
+}
+
+.entity-edit-actions button:not(.primary):hover {
+  background: rgba(41, 98, 255, 0.2);
+}
+
+.inline-select {
+  min-width: 140px;
 }
 
 .schedule-panel {
