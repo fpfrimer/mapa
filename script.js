@@ -135,7 +135,8 @@ function normalizeText(value) {
     .toString()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
 }
 
 function matchesSearchQuery(item, type, query) {
@@ -156,7 +157,42 @@ function matchesSearchQuery(item, type, query) {
 }
 
 function normalizeCode(value) {
-  return normalizeText(value || '').trim();
+  return normalizeText(value || '');
+}
+
+function getEntitySortKey(entity, type) {
+  const nameKey = normalizeText(entity?.name || '');
+  const codeKey = type === 'discipline' ? normalizeText(entity?.code || '') : '';
+  const idKey = (entity?.id || '').toString();
+  return { nameKey, codeKey, idKey };
+}
+
+function compareEntities(type, a, b) {
+  const aKey = getEntitySortKey(a, type);
+  const bKey = getEntitySortKey(b, type);
+
+  if (aKey.nameKey !== bKey.nameKey) {
+    return aKey.nameKey.localeCompare(bKey.nameKey);
+  }
+
+  if (type === 'discipline' && aKey.codeKey !== bKey.codeKey) {
+    return aKey.codeKey.localeCompare(bKey.codeKey);
+  }
+
+  return aKey.idKey.localeCompare(bKey.idKey);
+}
+
+function sortStateCollection(type) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey || !Array.isArray(state[collectionKey])) return;
+  state[collectionKey].sort((a, b) => compareEntities(type, a, b));
+}
+
+function sortAllCollections() {
+  sortStateCollection('period');
+  sortStateCollection('professor');
+  sortStateCollection('room');
+  sortStateCollection('discipline');
 }
 
 function isDuplicateDisciplineCode(code, ignoreId = null) {
@@ -412,6 +448,7 @@ function toggleManagementPanel(panelKey) {
 }
 
 function refreshLists() {
+  sortAllCollections();
   renderEntityList(state.periods, elements.periodList, 'period');
   renderEntityList(state.professors, elements.professorList, 'professor');
   renderEntityList(state.rooms, elements.roomList, 'room');
@@ -448,6 +485,7 @@ function saveEntityEdit(type, id, updates) {
     }
   }
 
+  sortStateCollection(type);
   state.entityEditing = null;
   refreshLists();
   updateEntitySelector();
@@ -1041,6 +1079,7 @@ function updateSuggestions() {
 }
 
 function populateModalSelects() {
+  sortAllCollections();
   elements.assignmentDiscipline.innerHTML = '<option value="">Selecione</option>';
   state.disciplines.forEach((discipline) => {
     const option = document.createElement('option');
@@ -1160,6 +1199,7 @@ function applyStateFromData(data) {
   state.assignmentEditing = null;
   state.entityEditing = null;
   elements.viewTypeSelect.value = state.view;
+  sortAllCollections();
   refreshLists();
   updateEntitySelector();
 }
