@@ -1,0 +1,1727 @@
+const state = {
+  periods: [],
+  professors: [],
+  rooms: [],
+  disciplines: [],
+  schedule: {}, // periodId -> { slotKey: { disciplineId, professorId, roomId } }
+  view: 'period',
+  selectedEntity: '',
+  assignmentEditing: null,
+  entityEditing: null,
+  multiSelectMode: false,
+  selectedSlots: new Set()
+};
+
+let counters = {
+  period: 1,
+  professor: 1,
+  room: 1,
+  discipline: 1
+};
+
+const searchQueries = {
+  period: '',
+  professor: '',
+  room: '',
+  discipline: ''
+};
+
+let activePanelKey = null;
+
+const STORAGE_KEY = 'academic-planner-state-v1';
+const COUNTERS_KEY = 'academic-planner-counters-v1';
+
+const days = [
+  { key: 'monday', label: 'Segunda' },
+  { key: 'tuesday', label: 'Terça' },
+  { key: 'wednesday', label: 'Quarta' },
+  { key: 'thursday', label: 'Quinta' },
+  { key: 'friday', label: 'Sexta' },
+  { key: 'saturday', label: 'Sábado' }
+];
+
+const dayOrder = days.reduce((acc, day, index) => {
+  acc[day.key] = index;
+  return acc;
+}, {});
+
+const sessions = [
+  {
+    name: 'Manhã',
+    key: 'manha',
+    slots: [
+      { code: 'M1', time: '07:30 - 08:20' },
+      { code: 'M2', time: '08:20 - 09:10' },
+      { code: 'M3', time: '09:10 - 10:00' },
+      { code: 'M4', time: '10:20 - 11:10' },
+      { code: 'M5', time: '11:10 - 12:00' },
+      { code: 'M6', time: '12:00 - 12:50' }
+    ]
+  },
+  {
+    name: 'Tarde',
+    key: 'tarde',
+    slots: [
+      { code: 'T1', time: '13:30 - 14:20' },
+      { code: 'T2', time: '14:20 - 15:10' },
+      { code: 'T3', time: '15:10 - 16:00' },
+      { code: 'T4', time: '16:20 - 17:10' },
+      { code: 'T5', time: '17:10 - 18:00' },
+      { code: 'T6', time: '18:00 - 18:50' }
+    ]
+  },
+  {
+    name: 'Noite',
+    key: 'noite',
+    slots: [
+      { code: 'N1', time: '18:50 - 19:40' },
+      { code: 'N2', time: '19:40 - 20:30' },
+      { code: 'N3', time: '20:30 - 21:20' },
+      { code: 'N4', time: '21:30 - 22:20' },
+      { code: 'N5', time: '22:20 - 23:10' },
+      { code: 'N6', time: '23:10 - 00:00' }
+    ]
+  }
+];
+
+const slotDictionary = sessions.reduce((acc, session, sessionIndex) => {
+  session.slots.forEach((slot, slotIndex) => {
+    acc[slot.code] = {
+      ...slot,
+      sessionName: session.name,
+      order: sessionIndex * 10 + slotIndex
+    };
+  });
+  return acc;
+}, {});
+
+const entityCollections = {
+  period: 'periods',
+  professor: 'professors',
+  room: 'rooms',
+  discipline: 'disciplines'
+};
+
+const elements = {
+  periodForm: document.getElementById('period-form'),
+  professorForm: document.getElementById('professor-form'),
+  roomForm: document.getElementById('room-form'),
+  disciplineForm: document.getElementById('discipline-form'),
+  disciplineCodeInput: document.getElementById('discipline-code'),
+  periodList: document.getElementById('period-list'),
+  professorList: document.getElementById('professor-list'),
+  roomList: document.getElementById('room-list'),
+  disciplineList: document.getElementById('discipline-list'),
+  entityMenu: document.querySelector('.entity-menu'),
+  menuButtons: document.querySelectorAll('.menu-button'),
+  managementPanel: document.getElementById('management-panel'),
+  panelTitle: document.getElementById('panel-title'),
+  panelClose: document.querySelector('.panel-close'),
+  panelSections: document.querySelectorAll('#management-panel .panel-section'),
+  periodSearch: document.getElementById('period-search'),
+  professorSearch: document.getElementById('professor-search'),
+  roomSearch: document.getElementById('room-search'),
+  disciplineSearch: document.getElementById('discipline-search'),
+  disciplinePeriodSelect: document.getElementById('discipline-period'),
+  viewTypeSelect: document.getElementById('view-type'),
+  entitySelector: document.getElementById('entity-selector'),
+  scheduleContainer: document.getElementById('schedule-container'),
+  toggleMultiSelect: document.getElementById('toggle-multi-select'),
+  selectionSummary: document.getElementById('selection-summary'),
+  editSelection: document.getElementById('edit-selection'),
+  clearSelection: document.getElementById('clear-selection'),
+  modal: document.getElementById('assignment-modal'),
+  modalClose: document.querySelector('.modal-close'),
+  assignmentForm: document.getElementById('assignment-form'),
+  assignmentDay: document.getElementById('assignment-day'),
+  assignmentSlot: document.getElementById('assignment-slot'),
+  assignmentDiscipline: document.getElementById('assignment-discipline'),
+  assignmentPeriod: document.getElementById('assignment-period'),
+  assignmentProfessor: document.getElementById('assignment-professor'),
+  assignmentRoom: document.getElementById('assignment-room'),
+  suggestions: document.getElementById('suggestions'),
+  removeAssignment: document.getElementById('remove-assignment'),
+  saveBrowserButton: document.getElementById('save-browser'),
+  restoreBrowserButton: document.getElementById('restore-browser'),
+  exportButton: document.getElementById('export-config'),
+  importInput: document.getElementById('import-config'),
+  clearBrowserButton: document.getElementById('clear-browser'),
+  storageFeedback: document.getElementById('storage-feedback')
+};
+
+const menuButtons = Array.from(elements.menuButtons || []);
+const panelSections = Array.from(elements.panelSections || []);
+
+function normalizeText(value) {
+  return (value || '')
+    .toString()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
+}
+
+function matchesSearchQuery(item, type, query) {
+  if (!query) return true;
+  const name = normalizeText(item?.name || '');
+  if (name.includes(query)) return true;
+  if (type === 'discipline') {
+    const code = normalizeText(item?.code || '');
+    if (code && code.includes(query)) return true;
+  }
+  if (type === 'discipline') {
+    const period = getPeriodById(item?.periodId);
+    if (period && normalizeText(period.name).includes(query)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeCode(value) {
+  return normalizeText(value || '');
+}
+
+function getEntitySortKey(entity, type) {
+  const nameKey = normalizeText(entity?.name || '');
+  const codeKey = type === 'discipline' ? normalizeText(entity?.code || '') : '';
+  const idKey = (entity?.id || '').toString();
+  return { nameKey, codeKey, idKey };
+}
+
+function compareEntities(type, a, b) {
+  const aKey = getEntitySortKey(a, type);
+  const bKey = getEntitySortKey(b, type);
+
+  if (aKey.nameKey !== bKey.nameKey) {
+    return aKey.nameKey.localeCompare(bKey.nameKey);
+  }
+
+  if (type === 'discipline' && aKey.codeKey !== bKey.codeKey) {
+    return aKey.codeKey.localeCompare(bKey.codeKey);
+  }
+
+  return aKey.idKey.localeCompare(bKey.idKey);
+}
+
+function sortStateCollection(type) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey || !Array.isArray(state[collectionKey])) return;
+  state[collectionKey].sort((a, b) => compareEntities(type, a, b));
+}
+
+function sortAllCollections() {
+  sortStateCollection('period');
+  sortStateCollection('professor');
+  sortStateCollection('room');
+  sortStateCollection('discipline');
+}
+
+function isDuplicateDisciplineCode(code, ignoreId = null) {
+  const normalized = normalizeCode(code);
+  if (!normalized) return false;
+  return state.disciplines.some((discipline) => {
+    if (!discipline) return false;
+    if (ignoreId && discipline.id === ignoreId) return false;
+    return normalizeCode(discipline.code) === normalized;
+  });
+}
+
+function formatDisciplineLabel(discipline) {
+  if (!discipline) return '';
+  const code = discipline.code ? discipline.code.trim() : '';
+  const name = discipline.name || '';
+  return code ? `${code} · ${name}` : name;
+}
+
+function generateId(type) {
+  return `${type}-${counters[type]++}`;
+}
+
+function renderEntityList(list, container, type) {
+  container.innerHTML = '';
+  const query = normalizeText(searchQueries[type] || '');
+  const filtered = list
+    .map((item) => {
+      const isEditing =
+        state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === item.id;
+      return { item, isEditing };
+    })
+    .filter(({ item, isEditing }) => {
+      if (!query) return true;
+      if (isEditing) return true;
+      return matchesSearchQuery(item, type, query);
+    });
+
+  if (!filtered.length) {
+    const empty = document.createElement('li');
+    empty.className = 'entity-empty';
+    empty.textContent = list.length ? 'Nenhum item encontrado.' : 'Nenhum item cadastrado.';
+    container.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach(({ item, isEditing }) => {
+    const li = document.createElement('li');
+    li.className = 'entity-item';
+
+    if (isEditing) {
+      const form = document.createElement('form');
+      form.className = 'entity-edit-form';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.required = true;
+      nameInput.value = item.name;
+      nameInput.placeholder = 'Nome';
+      form.appendChild(nameInput);
+
+      let codeInput = null;
+      let periodSelect = null;
+      if (type === 'discipline') {
+        codeInput = document.createElement('input');
+        codeInput.type = 'text';
+        codeInput.placeholder = 'Código (opcional)';
+        codeInput.value = item.code || '';
+        form.appendChild(codeInput);
+
+        periodSelect = document.createElement('select');
+        periodSelect.required = true;
+        periodSelect.className = 'inline-select';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Período';
+        periodSelect.appendChild(defaultOption);
+
+        state.periods.forEach((period) => {
+          const option = document.createElement('option');
+          option.value = period.id;
+          option.textContent = period.name;
+          periodSelect.appendChild(option);
+        });
+
+        periodSelect.value = item.periodId || '';
+        form.appendChild(periodSelect);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'entity-edit-actions';
+
+      const saveButton = document.createElement('button');
+      saveButton.type = 'submit';
+      saveButton.className = 'primary';
+      saveButton.textContent = 'Salvar';
+      actions.appendChild(saveButton);
+
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.textContent = 'Cancelar';
+      cancelButton.addEventListener('click', cancelEntityEditing);
+      actions.appendChild(cancelButton);
+
+      form.appendChild(actions);
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const name = nameInput.value.trim();
+        if (!name) return;
+
+        const updates = { name };
+        if (type === 'discipline') {
+          const codeValue = codeInput?.value.trim() || '';
+          if (codeValue && isDuplicateDisciplineCode(codeValue, item.id)) {
+            alert('Já existe uma disciplina com este código.');
+            return;
+          }
+          updates.code = codeValue;
+          const selectedPeriod = periodSelect?.value || '';
+          if (!selectedPeriod) {
+            alert('Selecione um período para a disciplina.');
+            return;
+          }
+          updates.periodId = selectedPeriod;
+        }
+
+        saveEntityEdit(type, item.id, updates);
+      });
+
+      li.appendChild(form);
+    } else {
+      const info = document.createElement('div');
+      info.className = 'entity-info';
+
+      const heading = document.createElement('div');
+      heading.className = 'entity-heading';
+
+      if (type === 'discipline' && item.code) {
+        const codeBadge = document.createElement('span');
+        codeBadge.className = 'entity-code';
+        codeBadge.textContent = item.code;
+        heading.appendChild(codeBadge);
+      }
+
+      const name = document.createElement('span');
+      name.className = 'entity-name';
+      name.textContent = item.name;
+      heading.appendChild(name);
+
+      info.appendChild(heading);
+
+      if (type === 'discipline') {
+        const period = getPeriodById(item.periodId);
+        const meta = document.createElement('span');
+        meta.className = 'entity-meta';
+        meta.textContent = period ? period.name : 'Sem período';
+        info.appendChild(meta);
+      }
+
+      li.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.className = 'entity-actions';
+
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'icon-button';
+      editButton.innerHTML =
+        '<span aria-hidden="true">✏️</span><span class="visually-hidden">Editar</span>';
+      editButton.title = 'Editar';
+      editButton.addEventListener('click', () => startEntityEditing(type, item.id));
+      actions.appendChild(editButton);
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'icon-button danger';
+      removeButton.innerHTML =
+        '<span aria-hidden="true">🗑️</span><span class="visually-hidden">Remover</span>';
+      removeButton.title = 'Remover';
+      removeButton.addEventListener('click', () => confirmRemoval(type, item));
+      actions.appendChild(removeButton);
+
+      li.appendChild(actions);
+    }
+
+    container.appendChild(li);
+  });
+}
+
+function openManagementPanel(panelKey) {
+  const { managementPanel, panelTitle } = elements;
+  if (!managementPanel) return;
+  activePanelKey = panelKey;
+  managementPanel.classList.remove('hidden');
+  managementPanel.setAttribute('aria-hidden', 'false');
+
+  let currentTitle = 'Gerenciar';
+  panelSections.forEach((section) => {
+    const matches = section.dataset.panel === panelKey;
+    section.hidden = !matches;
+    if (matches) {
+      currentTitle = section.dataset.title || currentTitle;
+      section.scrollTop = 0;
+      const scrollable = section.querySelector('.list-container');
+      if (scrollable) {
+        scrollable.scrollTop = 0;
+      }
+    }
+  });
+
+  if (panelTitle) {
+    panelTitle.textContent = currentTitle;
+  }
+
+  menuButtons.forEach((button) => {
+    const isActive = button.dataset.panel === panelKey;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-expanded', String(isActive));
+  });
+
+  managementPanel.focus();
+}
+
+function closeManagementPanel() {
+  const { managementPanel, panelTitle } = elements;
+  if (!managementPanel) return;
+  managementPanel.classList.add('hidden');
+  managementPanel.setAttribute('aria-hidden', 'true');
+  activePanelKey = null;
+  panelSections.forEach((section) => {
+    section.hidden = true;
+  });
+  menuButtons.forEach((button) => {
+    button.classList.remove('active');
+    button.setAttribute('aria-expanded', 'false');
+  });
+  if (panelTitle) {
+    panelTitle.textContent = 'Gerenciar';
+  }
+}
+
+function toggleManagementPanel(panelKey) {
+  const { managementPanel } = elements;
+  if (!managementPanel) return;
+  const isOpen = !managementPanel.classList.contains('hidden');
+  if (isOpen && activePanelKey === panelKey) {
+    closeManagementPanel();
+  } else {
+    openManagementPanel(panelKey);
+  }
+}
+
+function refreshLists() {
+  sortAllCollections();
+  renderEntityList(state.periods, elements.periodList, 'period');
+  renderEntityList(state.professors, elements.professorList, 'professor');
+  renderEntityList(state.rooms, elements.roomList, 'room');
+  renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
+  updateDisciplinePeriodOptions();
+}
+
+function startEntityEditing(type, id) {
+  state.entityEditing = { type, id };
+  refreshLists();
+}
+
+function cancelEntityEditing() {
+  state.entityEditing = null;
+  refreshLists();
+}
+
+function saveEntityEdit(type, id, updates) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey) return;
+  const list = state[collectionKey];
+  const entity = list.find((item) => item.id === id);
+  if (!entity) return;
+
+  entity.name = updates.name;
+
+  if (type === 'discipline') {
+    const previousPeriod = entity.periodId;
+    const newPeriod = updates.periodId || previousPeriod;
+    entity.code = updates.code || '';
+    entity.periodId = newPeriod;
+    if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
+      moveDisciplineAssignments(id, previousPeriod, newPeriod);
+    }
+  }
+
+  sortStateCollection(type);
+  state.entityEditing = null;
+  refreshLists();
+  updateEntitySelector();
+  persistState();
+}
+
+function confirmRemoval(type, item) {
+  let message = `Deseja remover "${item.name}"?`;
+  if (type === 'period') {
+    const relatedDisciplines = state.disciplines.filter((discipline) => discipline.periodId === item.id);
+    if (relatedDisciplines.length) {
+      message =
+        `Remover o período "${item.name}" também apagará ${relatedDisciplines.length} disciplina(s) vinculada(s). Continuar?`;
+    }
+  }
+  const proceed = confirm(message);
+  if (!proceed) return;
+  deleteEntity(type, item.id);
+}
+
+function purgeSchedule(matchFn) {
+  Object.entries(state.schedule).forEach(([periodId, slots]) => {
+    Object.entries(slots).forEach(([key, entry]) => {
+      if (matchFn(periodId, entry, key)) {
+        delete slots[key];
+      }
+    });
+    if (!Object.keys(slots).length) {
+      delete state.schedule[periodId];
+    }
+  });
+}
+
+function moveDisciplineAssignments(disciplineId, fromPeriod, toPeriod) {
+  const origin = state.schedule[fromPeriod];
+  if (!origin) return;
+  Object.entries({ ...origin }).forEach(([key, entry]) => {
+    if (entry.disciplineId !== disciplineId) return;
+    if (!state.schedule[toPeriod]) {
+      state.schedule[toPeriod] = {};
+    }
+    if (!state.schedule[toPeriod][key]) {
+      state.schedule[toPeriod][key] = entry;
+    }
+    delete origin[key];
+  });
+  if (!Object.keys(origin).length) {
+    delete state.schedule[fromPeriod];
+  }
+}
+
+function deleteEntity(type, id) {
+  const collectionKey = entityCollections[type];
+  if (!collectionKey) return;
+  const list = state[collectionKey];
+  const index = list.findIndex((item) => item.id === id);
+  if (index === -1) return;
+
+  list.splice(index, 1);
+
+  if (type === 'period') {
+    delete state.schedule[id];
+    const removedDisciplineIds = state.disciplines
+      .filter((discipline) => discipline.periodId === id)
+      .map((discipline) => discipline.id);
+    if (removedDisciplineIds.length) {
+      state.disciplines = state.disciplines.filter((discipline) => discipline.periodId !== id);
+      purgeSchedule((periodId, entry) => removedDisciplineIds.includes(entry.disciplineId));
+    }
+  } else if (type === 'discipline') {
+    purgeSchedule((periodId, entry) => entry.disciplineId === id);
+  } else if (type === 'professor') {
+    purgeSchedule((periodId, entry) => entry.professorId === id);
+  } else if (type === 'room') {
+    purgeSchedule((periodId, entry) => entry.roomId === id);
+  }
+
+  if (state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === id) {
+    state.entityEditing = null;
+  }
+  if (state.view === type && state.selectedEntity === id) {
+    state.selectedEntity = '';
+  }
+
+  if (state.entityEditing) {
+    const editingCollection = entityCollections[state.entityEditing.type];
+    const editingList = editingCollection ? state[editingCollection] : [];
+    if (!editingList || !editingList.some((entity) => entity.id === state.entityEditing.id)) {
+      state.entityEditing = null;
+    }
+  }
+
+  refreshLists();
+  updateEntitySelector();
+  persistState();
+}
+
+function updateDisciplinePeriodOptions() {
+  const { disciplinePeriodSelect } = elements;
+  disciplinePeriodSelect.innerHTML = '<option value="">Período</option>';
+  state.periods.forEach((period) => {
+    const option = document.createElement('option');
+    option.value = period.id;
+    option.textContent = period.name;
+    disciplinePeriodSelect.appendChild(option);
+  });
+}
+
+function updateEntitySelector() {
+  const { entitySelector } = elements;
+  entitySelector.innerHTML = '<option value="">Escolha um item</option>';
+  let source = [];
+  if (state.view === 'period') source = state.periods;
+  if (state.view === 'professor') source = state.professors;
+  if (state.view === 'room') source = state.rooms;
+  source.forEach((item) => {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.name;
+    entitySelector.appendChild(option);
+  });
+  if (!source.some((item) => item.id === state.selectedEntity)) {
+    state.selectedEntity = '';
+  }
+  if (!state.selectedEntity) {
+    clearSelectedSlots();
+  }
+  if (state.selectedEntity) {
+    entitySelector.value = state.selectedEntity;
+  }
+  renderSchedule();
+}
+
+function getDisciplineById(id) {
+  return state.disciplines.find((d) => d.id === id) || null;
+}
+
+function getPeriodById(id) {
+  return state.periods.find((p) => p.id === id) || null;
+}
+
+function getProfessorById(id) {
+  return state.professors.find((p) => p.id === id) || null;
+}
+
+function getRoomById(id) {
+  return state.rooms.find((r) => r.id === id) || null;
+}
+
+function slotKey(dayKey, slotCode) {
+  return `${dayKey}|${slotCode}`;
+}
+
+function parseSlotKey(key) {
+  const [dayKey, slotCode] = (key || '').split('|');
+  return { dayKey, slotCode };
+}
+
+function formatSlotLabel(dayKey, slotCode) {
+  const day = days.find((d) => d.key === dayKey);
+  const slotInfo = slotDictionary[slotCode];
+  if (!slotInfo) {
+    return `${day ? day.label : dayKey} • ${slotCode}`;
+  }
+  return `${day ? day.label : dayKey} • ${slotInfo.code} (${slotInfo.time})`;
+}
+
+function updateSelectionUI() {
+  const { toggleMultiSelect, selectionSummary, editSelection, clearSelection } = elements;
+  if (toggleMultiSelect) {
+    toggleMultiSelect.setAttribute('aria-pressed', state.multiSelectMode ? 'true' : 'false');
+    toggleMultiSelect.textContent = state.multiSelectMode
+      ? 'Desativar seleção múltipla'
+      : 'Ativar seleção múltipla';
+  }
+  const count = state.selectedSlots.size;
+  if (selectionSummary) {
+    const baseText = count
+      ? `${count} horário${count > 1 ? 's' : ''} selecionado${count > 1 ? 's' : ''}.`
+      : 'Nenhum horário selecionado.';
+    selectionSummary.textContent = state.multiSelectMode
+      ? `Seleção múltipla ativa — ${baseText}`
+      : baseText;
+  }
+  if (editSelection) {
+    editSelection.disabled = !count;
+  }
+  if (clearSelection) {
+    clearSelection.disabled = !count;
+  }
+}
+
+function clearSelectedSlots(options = {}) {
+  const { preserveMode = false } = options;
+  state.selectedSlots.clear();
+  if (!preserveMode) {
+    state.multiSelectMode = false;
+  }
+  updateSelectionUI();
+}
+
+function toggleSlotSelection(dayKey, slotCode, button) {
+  const key = slotKey(dayKey, slotCode);
+  if (state.selectedSlots.has(key)) {
+    state.selectedSlots.delete(key);
+    if (button) {
+      button.classList.remove('selected');
+      button.setAttribute('aria-pressed', 'false');
+    }
+  } else {
+    state.selectedSlots.add(key);
+    if (button) {
+      button.classList.add('selected');
+      button.setAttribute('aria-pressed', 'true');
+    }
+  }
+  updateSelectionUI();
+}
+
+function handleSlotClick(button, dayKey, slotCode) {
+  if (state.multiSelectMode) {
+    toggleSlotSelection(dayKey, slotCode, button);
+    return;
+  }
+  openAssignmentModalForSlots([{ dayKey, slotCode }]);
+}
+
+function ensureSchedule(periodId) {
+  if (!state.schedule[periodId]) {
+    state.schedule[periodId] = {};
+  }
+  return state.schedule[periodId];
+}
+
+function getAssignmentForPeriod(periodId, key) {
+  return state.schedule[periodId]?.[key] || null;
+}
+
+function getAssignmentsForSlot(key) {
+  const results = [];
+  Object.entries(state.schedule).forEach(([periodId, slots]) => {
+    if (slots[key]) {
+      results.push({ periodId, data: slots[key] });
+    }
+  });
+  return results;
+}
+
+function findAssignmentByProfessor(professorId, key) {
+  for (const [periodId, slots] of Object.entries(state.schedule)) {
+    const data = slots[key];
+    if (data && data.professorId === professorId) {
+      return { periodId, data };
+    }
+  }
+  return null;
+}
+
+function findAssignmentByRoom(roomId, key) {
+  for (const [periodId, slots] of Object.entries(state.schedule)) {
+    const data = slots[key];
+    if (data && data.roomId === roomId) {
+      return { periodId, data };
+    }
+  }
+  return null;
+}
+
+function buildCellContent(assignments) {
+  if (!assignments.length) {
+    return '<span class="slot-empty">Disponível</span>';
+  }
+  return assignments
+    .map(({ periodId, data }) => {
+      const discipline = getDisciplineById(data.disciplineId);
+      const professor = getProfessorById(data.professorId);
+      const room = getRoomById(data.roomId);
+      const period = getPeriodById(periodId);
+      const lines = [];
+      if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
+      if (period) lines.push(`<span class="badge period">${period.name}</span>`);
+      if (professor) lines.push(`<span class="badge professor">${professor.name}</span>`);
+      if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
+      return `<div class="slot-content">${lines.join('')}</div>`;
+    })
+    .join('');
+}
+
+function getCellAssignments(view, entityId, dayKey, slotCode) {
+  const key = slotKey(dayKey, slotCode);
+  if (!entityId) return [];
+  if (view === 'period') {
+    const assignment = getAssignmentForPeriod(entityId, key);
+    return assignment ? [{ periodId: entityId, data: assignment }] : [];
+  }
+  if (view === 'professor') {
+    return getAssignmentsForSlot(key).filter(({ data }) => data.professorId === entityId);
+  }
+  if (view === 'room') {
+    return getAssignmentsForSlot(key).filter(({ data }) => data.roomId === entityId);
+  }
+  return [];
+}
+
+function renderSchedule() {
+  const { scheduleContainer } = elements;
+  scheduleContainer.innerHTML = '';
+  if (!state.selectedEntity) {
+    scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'schedule-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headerRow.appendChild(document.createElement('th'));
+  days.forEach((day) => {
+    const th = document.createElement('th');
+    th.textContent = day.label;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sessions.forEach((session) => {
+    const labelRow = document.createElement('tr');
+    labelRow.className = 'session-row';
+    const labelCell = document.createElement('th');
+    labelCell.colSpan = days.length + 1;
+    labelCell.innerHTML = `<span class="session-label">${session.name}</span>`;
+    labelRow.appendChild(labelCell);
+    tbody.appendChild(labelRow);
+
+    session.slots.forEach((slot) => {
+      const row = document.createElement('tr');
+      row.className = `session-${session.key}`;
+      const timeCell = document.createElement('td');
+      timeCell.className = 'slot-label';
+      timeCell.textContent = `${slot.code} • ${slot.time}`;
+      row.appendChild(timeCell);
+
+      days.forEach((day) => {
+        const cell = document.createElement('td');
+        const button = document.importNode(document.getElementById('cell-template').content, true).querySelector('.slot-cell');
+        button.dataset.day = day.key;
+        button.dataset.slot = slot.code;
+        const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
+        button.innerHTML = buildCellContent(assignments);
+        const key = slotKey(day.key, slot.code);
+        if (state.selectedSlots.has(key)) {
+          button.classList.add('selected');
+          button.setAttribute('aria-pressed', 'true');
+        } else {
+          button.setAttribute('aria-pressed', 'false');
+        }
+        button.addEventListener('click', (event) => {
+          handleSlotClick(event.currentTarget, day.key, slot.code);
+        });
+        cell.appendChild(button);
+        row.appendChild(cell);
+      });
+      tbody.appendChild(row);
+    });
+  });
+
+  table.appendChild(tbody);
+  scheduleContainer.appendChild(table);
+  updateSelectionUI();
+}
+
+function openAssignmentModalForSlots(slotsInput) {
+  if (!state.selectedEntity) {
+    alert('Selecione um item para editar o horário.');
+    return;
+  }
+  const normalizedSlots = (Array.isArray(slotsInput) ? slotsInput : [])
+    .map(({ dayKey, slotCode }) => ({ dayKey, slotCode }))
+    .filter((slot) => slot.dayKey && slot.slotCode);
+  if (!normalizedSlots.length) return;
+
+  normalizedSlots.sort((a, b) => {
+    const dayDiff = (dayOrder[a.dayKey] ?? 0) - (dayOrder[b.dayKey] ?? 0);
+    if (dayDiff !== 0) return dayDiff;
+    const slotOrderA = slotDictionary[a.slotCode]?.order ?? 0;
+    const slotOrderB = slotDictionary[b.slotCode]?.order ?? 0;
+    return slotOrderA - slotOrderB;
+  });
+
+  populateModalSelects();
+
+  const details = normalizedSlots.map((slot) => {
+    const key = slotKey(slot.dayKey, slot.slotCode);
+    let originalPeriodId = null;
+    let originalEntry = null;
+    if (state.view === 'period') {
+      originalPeriodId = state.selectedEntity;
+      originalEntry = getAssignmentForPeriod(state.selectedEntity, key);
+    } else if (state.view === 'professor') {
+      const result = findAssignmentByProfessor(state.selectedEntity, key);
+      if (result) {
+        originalPeriodId = result.periodId;
+        originalEntry = result.data;
+      }
+    } else if (state.view === 'room') {
+      const result = findAssignmentByRoom(state.selectedEntity, key);
+      if (result) {
+        originalPeriodId = result.periodId;
+        originalEntry = result.data;
+      }
+    }
+    return { ...slot, key, originalPeriodId, originalEntry };
+  });
+
+  state.assignmentEditing = {
+    slots: normalizedSlots,
+    details,
+    multi: normalizedSlots.length > 1
+  };
+
+  const firstDetail = details[0];
+  if (state.assignmentEditing.multi) {
+    elements.assignmentDay.value = `${details.length} horários selecionados`;
+    elements.assignmentSlot.value = 'Múltiplos blocos';
+  } else if (firstDetail) {
+    elements.assignmentDay.value = days.find((d) => d.key === firstDetail.dayKey)?.label || '';
+    elements.assignmentSlot.value = `${firstDetail.slotCode}`;
+  }
+
+  const disciplineValues = new Set();
+  const professorValues = new Set();
+  const roomValues = new Set();
+  const periodValues = new Set();
+
+  details.forEach((detail) => {
+    if (detail.originalEntry) {
+      if (detail.originalEntry.disciplineId) {
+        disciplineValues.add(detail.originalEntry.disciplineId);
+      }
+      if (detail.originalEntry.professorId) {
+        professorValues.add(detail.originalEntry.professorId);
+      }
+      if (detail.originalEntry.roomId) {
+        roomValues.add(detail.originalEntry.roomId);
+      }
+    }
+    if (detail.originalPeriodId) {
+      periodValues.add(detail.originalPeriodId);
+    }
+  });
+
+  elements.assignmentDiscipline.value = disciplineValues.size === 1 ? [...disciplineValues][0] : '';
+
+  if (state.view === 'period') {
+    elements.assignmentPeriod.value = state.selectedEntity;
+  } else if (periodValues.size === 1) {
+    elements.assignmentPeriod.value = [...periodValues][0];
+  } else {
+    elements.assignmentPeriod.value = '';
+  }
+
+  if (state.view === 'professor') {
+    elements.assignmentProfessor.value = state.selectedEntity;
+  } else if (professorValues.size === 1) {
+    elements.assignmentProfessor.value = [...professorValues][0];
+  } else {
+    elements.assignmentProfessor.value = '';
+  }
+
+  if (state.view === 'room') {
+    elements.assignmentRoom.value = state.selectedEntity;
+  } else if (roomValues.size === 1) {
+    elements.assignmentRoom.value = [...roomValues][0];
+  } else {
+    elements.assignmentRoom.value = '';
+  }
+
+  if (state.view === 'period') {
+    elements.assignmentPeriod.disabled = true;
+    elements.assignmentPeriod.value = state.selectedEntity;
+  } else {
+    elements.assignmentPeriod.disabled = false;
+  }
+
+  if (state.view === 'professor') {
+    elements.assignmentProfessor.disabled = true;
+    elements.assignmentProfessor.value = state.selectedEntity;
+  } else {
+    elements.assignmentProfessor.disabled = false;
+  }
+
+  if (state.view === 'room') {
+    elements.assignmentRoom.disabled = true;
+    elements.assignmentRoom.value = state.selectedEntity;
+  } else {
+    elements.assignmentRoom.disabled = false;
+  }
+
+  elements.removeAssignment.textContent = state.assignmentEditing.multi
+    ? 'Limpar horários'
+    : 'Remover horário';
+
+  updatePeriodByDiscipline();
+  updateSuggestions();
+  elements.modal.classList.remove('hidden');
+}
+
+function closeModal() {
+  elements.modal.classList.add('hidden');
+  state.assignmentEditing = null;
+}
+
+elements.modalClose.addEventListener('click', closeModal);
+elements.modal.addEventListener('click', (event) => {
+  if (event.target === elements.modal) {
+    closeModal();
+  }
+});
+
+elements.assignmentDiscipline.addEventListener('change', () => {
+  updatePeriodByDiscipline();
+  updateSuggestions();
+});
+
+elements.assignmentProfessor.addEventListener('change', updateSuggestions);
+elements.assignmentRoom.addEventListener('change', updateSuggestions);
+elements.assignmentPeriod.addEventListener('change', updateSuggestions);
+
+elements.assignmentForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
+
+  const disciplineId = elements.assignmentDiscipline.value;
+  const periodId = elements.assignmentPeriod.value;
+  const professorId = elements.assignmentProfessor.value;
+  const roomId = elements.assignmentRoom.value;
+
+  if (!disciplineId || !periodId || !professorId || !roomId) {
+    alert('Preencha todos os campos.');
+    return;
+  }
+
+  const discipline = getDisciplineById(disciplineId);
+  if (discipline && discipline.periodId !== periodId) {
+    const proceed = confirm(
+      'A disciplina selecionada pertence a outro período. Deseja atribuí-la mesmo assim?'
+    );
+    if (!proceed) {
+      return;
+    }
+  }
+
+  const conflictMessages = [];
+  details.forEach((detail) => {
+    const conflicts = findConflicts({
+      periodId,
+      professorId,
+      roomId,
+      key: detail.key,
+      originalPeriodId: detail.originalPeriodId,
+      originalEntry: detail.originalEntry
+    });
+    conflicts.forEach((message) => {
+      conflictMessages.push(`${formatSlotLabel(detail.dayKey, detail.slotCode)}: ${message}`);
+    });
+  });
+
+  if (conflictMessages.length) {
+    const proceed = confirm(
+      `Existem conflitos nestes horários:\n\n${conflictMessages.join('\n')}\n\nDeseja substituir mesmo assim?`
+    );
+    if (!proceed) {
+      return;
+    }
+  }
+
+  details.forEach((detail) => {
+    const schedule = ensureSchedule(periodId);
+    schedule[detail.key] = { disciplineId, professorId, roomId };
+
+    if (detail.originalPeriodId && detail.originalPeriodId !== periodId) {
+      const previous = ensureSchedule(detail.originalPeriodId);
+      if (!detail.originalEntry || previous[detail.key] === detail.originalEntry) {
+        delete previous[detail.key];
+      }
+    }
+  });
+
+  persistState();
+  closeModal();
+  renderSchedule();
+});
+
+elements.removeAssignment.addEventListener('click', () => {
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
+  let removed = false;
+
+  details.forEach((detail) => {
+    if (state.view === 'period') {
+      const schedule = ensureSchedule(state.selectedEntity);
+      if (schedule[detail.key]) {
+        delete schedule[detail.key];
+        removed = true;
+      }
+    } else if (detail.originalPeriodId) {
+      const schedule = ensureSchedule(detail.originalPeriodId);
+      if (schedule[detail.key]) {
+        delete schedule[detail.key];
+        removed = true;
+      }
+    }
+  });
+
+  if (removed) {
+    persistState();
+    closeModal();
+    renderSchedule();
+  }
+});
+
+function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, originalEntry }) {
+  const conflicts = [];
+
+  // check same period slot already filled
+  const existingPeriod = state.schedule[periodId]?.[key];
+  const isSameOriginal =
+    originalEntry && periodId === originalPeriodId && existingPeriod === originalEntry;
+  if (existingPeriod && !isSameOriginal) {
+    const discipline = getDisciplineById(existingPeriod.disciplineId);
+    conflicts.push(
+      `Período já ocupado por ${
+        discipline ? formatDisciplineLabel(discipline) : 'outra disciplina'
+      }.`
+    );
+  }
+
+  Object.entries(state.schedule).forEach(([pId, slots]) => {
+    const entry = slots[key];
+    if (!entry) return;
+    const sameRecord = originalEntry && entry === originalEntry && pId === originalPeriodId;
+    if (sameRecord) return;
+
+    if (entry.professorId === professorId) {
+      const period = getPeriodById(pId);
+      conflicts.push(
+        `Professor indisponível (compromisso no período ${period ? period.name : pId}).`
+      );
+    }
+    if (entry.roomId === roomId) {
+      const period = getPeriodById(pId);
+      conflicts.push(`Sala ocupada pelo período ${period ? period.name : pId}.`);
+    }
+  });
+
+  return [...new Set(conflicts)];
+}
+
+function updateSuggestions() {
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+  const details = state.assignmentEditing.details;
+  if (!details.length) return;
+
+  if (state.assignmentEditing.multi) {
+    elements.suggestions.innerHTML =
+      '<span>Seleção múltipla ativa. Conflitos são verificados ao salvar.</span>';
+    return;
+  }
+
+  const detail = details[0];
+  const key = detail.key;
+  const periodId = elements.assignmentPeriod.value;
+  const professorId = elements.assignmentProfessor.value;
+  const roomId = elements.assignmentRoom.value;
+  const disciplineId = elements.assignmentDiscipline.value;
+
+  const availableRooms = state.rooms.filter((room) => {
+    if (!room.id) return false;
+    return !Object.entries(state.schedule).some(([pId, slots]) => {
+      const entry = slots[key];
+      if (!entry) return false;
+      const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
+      if (isSameRecord) return false;
+      return entry.roomId === room.id;
+    });
+  });
+
+  const availableProfessors = state.professors.filter((professor) => {
+    if (!professor.id) return false;
+    return !Object.entries(state.schedule).some(([pId, slots]) => {
+      const entry = slots[key];
+      if (!entry) return false;
+      const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
+      if (isSameRecord) return false;
+      return entry.professorId === professor.id;
+    });
+  });
+
+  const periodConflicts = [];
+  if (periodId) {
+    const entry = state.schedule[periodId]?.[key];
+    if (entry) {
+      const disciplineExisting = getDisciplineById(entry.disciplineId);
+      periodConflicts.push(
+        `Período já possui ${
+          disciplineExisting ? formatDisciplineLabel(disciplineExisting) : 'outra disciplina'
+        } neste horário.`
+      );
+    }
+  }
+
+  const suggestions = [];
+  const disciplineInfo = disciplineId ? getDisciplineById(disciplineId) : null;
+  let disciplinePeriodHint = '';
+  if (disciplineInfo) {
+    const period = getPeriodById(disciplineInfo.periodId);
+    disciplinePeriodHint = period
+      ? `${formatDisciplineLabel(disciplineInfo)} vinculada ao período ${period.name}.`
+      : '';
+    if (!periodId) {
+      elements.assignmentPeriod.value = disciplineInfo.periodId;
+    }
+    if (periodId && periodId !== disciplineInfo.periodId) {
+      const selectedPeriod = getPeriodById(periodId);
+      suggestions.push(
+        `<span class="suggestion-warning">Disciplina cadastrada para ${
+          period ? period.name : 'outro período'
+        }, mas você selecionou ${selectedPeriod ? selectedPeriod.name : 'um período diferente'}.</span>`
+      );
+    }
+  }
+
+  if (disciplinePeriodHint) {
+    suggestions.push(`<span>${disciplinePeriodHint}</span>`);
+  }
+  suggestions.push(
+    `<span><strong>Salas disponíveis:</strong> ${
+      availableRooms.length ? availableRooms.map((r) => r.name).join(', ') : 'Nenhuma sala livre'
+    }</span>`
+  );
+  suggestions.push(
+    `<span><strong>Professores disponíveis:</strong> ${
+      availableProfessors.length
+        ? availableProfessors.map((p) => p.name).join(', ')
+        : 'Nenhum professor livre'
+    }</span>`
+  );
+
+  periodConflicts.forEach((conflict) => {
+    suggestions.push(`<span class="suggestion-warning">${conflict}</span>`);
+  });
+
+  elements.suggestions.innerHTML = suggestions.join('');
+}
+
+function populateModalSelects() {
+  sortAllCollections();
+  elements.assignmentDiscipline.innerHTML = '<option value="">Selecione</option>';
+  state.disciplines.forEach((discipline) => {
+    const option = document.createElement('option');
+    option.value = discipline.id;
+    option.textContent = formatDisciplineLabel(discipline);
+    elements.assignmentDiscipline.appendChild(option);
+  });
+
+  elements.assignmentPeriod.innerHTML = '<option value="">Selecione</option>';
+  state.periods.forEach((period) => {
+    const option = document.createElement('option');
+    option.value = period.id;
+    option.textContent = period.name;
+    elements.assignmentPeriod.appendChild(option);
+  });
+
+  elements.assignmentProfessor.innerHTML = '<option value="">Selecione</option>';
+  state.professors.forEach((professor) => {
+    const option = document.createElement('option');
+    option.value = professor.id;
+    option.textContent = professor.name;
+    elements.assignmentProfessor.appendChild(option);
+  });
+
+  elements.assignmentRoom.innerHTML = '<option value="">Selecione</option>';
+  state.rooms.forEach((room) => {
+    const option = document.createElement('option');
+    option.value = room.id;
+    option.textContent = room.name;
+    elements.assignmentRoom.appendChild(option);
+  });
+}
+
+function updatePeriodByDiscipline() {
+  const disciplineId = elements.assignmentDiscipline.value;
+  if (!disciplineId) return;
+  const discipline = getDisciplineById(disciplineId);
+  if (!discipline) return;
+  const periodId = discipline.periodId;
+  elements.assignmentPeriod.value = periodId;
+  if (state.view === 'period') {
+    elements.assignmentPeriod.value = state.selectedEntity;
+  }
+}
+
+function setStorageFeedback(message, variant = 'info') {
+  const { storageFeedback } = elements;
+  if (!storageFeedback) return;
+  storageFeedback.textContent = message;
+  storageFeedback.classList.remove('success', 'error', 'warning');
+  if (variant && variant !== 'info' && message) {
+    storageFeedback.classList.add(variant);
+  }
+}
+
+function getPersistableSnapshot() {
+  return {
+    periods: state.periods,
+    professors: state.professors,
+    rooms: state.rooms,
+    disciplines: state.disciplines,
+    schedule: state.schedule,
+    view: state.view,
+    selectedEntity: state.selectedEntity
+  };
+}
+
+function persistState(options = {}) {
+  const { notify = false } = options;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableSnapshot()));
+    localStorage.setItem(COUNTERS_KEY, JSON.stringify(counters));
+    if (notify) {
+      setStorageFeedback('Configuração salva no navegador.', 'success');
+    }
+  } catch (error) {
+    console.error('Erro ao salvar dados no navegador.', error);
+    setStorageFeedback('Não foi possível salvar os dados localmente.', 'error');
+  }
+}
+
+function nextCounterValue(list, prefix) {
+  const base = `${prefix}-`;
+  return (
+    list.reduce((max, item) => {
+      if (!item || typeof item.id !== 'string') return max;
+      if (!item.id.startsWith(base)) return max;
+      const numeric = parseInt(item.id.slice(base.length), 10);
+      return Number.isFinite(numeric) && numeric > max ? numeric : max;
+    }, 0) + 1
+  );
+}
+
+function rebuildCounters() {
+  counters = {
+    period: nextCounterValue(state.periods, 'period'),
+    professor: nextCounterValue(state.professors, 'professor'),
+    room: nextCounterValue(state.rooms, 'room'),
+    discipline: nextCounterValue(state.disciplines, 'discipline')
+  };
+}
+
+function applyStateFromData(data) {
+  if (!data || typeof data !== 'object') return;
+  state.periods = Array.isArray(data.periods) ? data.periods : [];
+  state.professors = Array.isArray(data.professors) ? data.professors : [];
+  state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
+  state.disciplines = Array.isArray(data.disciplines)
+    ? data.disciplines.map((discipline) => ({
+        ...discipline,
+        code: typeof discipline?.code === 'string' ? discipline.code : ''
+      }))
+    : [];
+  state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
+  state.view = data.view || 'period';
+  state.selectedEntity = data.selectedEntity || '';
+  state.assignmentEditing = null;
+  state.entityEditing = null;
+  state.selectedSlots = new Set();
+  state.multiSelectMode = false;
+  elements.viewTypeSelect.value = state.view;
+  sortAllCollections();
+  refreshLists();
+  updateEntitySelector();
+  updateSelectionUI();
+}
+
+function restoreStateFromStorage(options = {}) {
+  const { notify = false } = options;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      if (notify) {
+        setStorageFeedback('Nenhuma configuração salva encontrada.', 'warning');
+      }
+      return false;
+    }
+    const parsed = JSON.parse(stored);
+    applyStateFromData(parsed);
+    const counterRaw = localStorage.getItem(COUNTERS_KEY);
+    if (counterRaw) {
+      const parsedCounters = JSON.parse(counterRaw);
+      counters = { ...counters, ...parsedCounters };
+    } else {
+      rebuildCounters();
+    }
+    persistState();
+    if (notify) {
+      setStorageFeedback('Configuração carregada do navegador.', 'success');
+    }
+    return true;
+  } catch (error) {
+    console.error('Erro ao carregar dados salvos.', error);
+    setStorageFeedback('Não foi possível carregar os dados salvos.', 'error');
+    return false;
+  }
+}
+
+function exportConfiguration() {
+  try {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      state: getPersistableSnapshot(),
+      counters
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `cronograma-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    setStorageFeedback('Arquivo JSON exportado com sucesso.', 'success');
+  } catch (error) {
+    console.error('Erro ao exportar configuração.', error);
+    setStorageFeedback('Não foi possível exportar os dados.', 'error');
+  }
+}
+
+function handleImportFile(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (loadEvent) => {
+    try {
+      const text = loadEvent.target?.result;
+      const parsed = JSON.parse(text);
+      const payload = parsed.state && typeof parsed.state === 'object' ? parsed.state : parsed;
+      applyStateFromData(payload);
+      if (parsed.counters && typeof parsed.counters === 'object') {
+        counters = { ...counters, ...parsed.counters };
+      } else {
+        rebuildCounters();
+      }
+      persistState();
+      setStorageFeedback('Configuração importada com sucesso.', 'success');
+    } catch (error) {
+      console.error('Erro ao importar arquivo de configuração.', error);
+      setStorageFeedback('Arquivo inválido. Verifique o conteúdo JSON.', 'error');
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  const confirmed = confirm('Tem certeza de que deseja remover todos os dados salvos?');
+  if (!confirmed) return;
+  state.periods = [];
+  state.professors = [];
+  state.rooms = [];
+  state.disciplines = [];
+  state.schedule = {};
+  state.view = 'period';
+  state.selectedEntity = '';
+  state.assignmentEditing = null;
+  state.entityEditing = null;
+  clearSelectedSlots();
+  counters = { period: 1, professor: 1, room: 1, discipline: 1 };
+  elements.viewTypeSelect.value = state.view;
+  resetSearchFilters();
+  refreshLists();
+  updateEntitySelector();
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(COUNTERS_KEY);
+  setStorageFeedback('Dados removidos. Você pode começar um novo cronograma.', 'warning');
+}
+
+function bindStorageControls() {
+  if (elements.saveBrowserButton) {
+    elements.saveBrowserButton.addEventListener('click', () => persistState({ notify: true }));
+  }
+  if (elements.restoreBrowserButton) {
+    elements.restoreBrowserButton.addEventListener('click', () => restoreStateFromStorage({ notify: true }));
+  }
+  if (elements.exportButton) {
+    elements.exportButton.addEventListener('click', exportConfiguration);
+  }
+  if (elements.importInput) {
+    elements.importInput.addEventListener('change', handleImportFile);
+  }
+  if (elements.clearBrowserButton) {
+    elements.clearBrowserButton.addEventListener('click', clearAllData);
+  }
+}
+
+function bindManagementPanel() {
+  if (!elements.managementPanel) return;
+
+  menuButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const panelKey = button.dataset.panel;
+      if (panelKey) {
+        toggleManagementPanel(panelKey);
+      }
+    });
+  });
+
+  if (elements.panelClose) {
+    elements.panelClose.addEventListener('click', () => {
+      closeManagementPanel();
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !elements.managementPanel.classList.contains('hidden')) {
+      closeManagementPanel();
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    const { managementPanel, entityMenu } = elements;
+    if (!managementPanel || managementPanel.classList.contains('hidden')) return;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
+    if (path && path.includes(managementPanel)) return;
+    if (path && entityMenu && path.includes(entityMenu)) return;
+    if (!path) {
+      if (managementPanel.contains(event.target)) return;
+      if (entityMenu && entityMenu.contains(event.target)) return;
+    }
+    closeManagementPanel();
+  });
+}
+
+function bindSelectionControls() {
+  const { toggleMultiSelect, editSelection, clearSelection } = elements;
+
+  if (toggleMultiSelect) {
+    toggleMultiSelect.addEventListener('click', () => {
+      state.multiSelectMode = !state.multiSelectMode;
+      updateSelectionUI();
+    });
+  }
+
+  if (editSelection) {
+    editSelection.addEventListener('click', () => {
+      if (!state.selectedEntity) {
+        alert('Selecione um item para editar o horário.');
+        return;
+      }
+      if (!state.selectedSlots.size) {
+        alert('Selecione ao menos um horário para editar.');
+        return;
+      }
+      const slots = Array.from(state.selectedSlots).map(parseSlotKey);
+      openAssignmentModalForSlots(slots);
+    });
+  }
+
+  if (clearSelection) {
+    clearSelection.addEventListener('click', () => {
+      if (!state.selectedSlots.size) return;
+      clearSelectedSlots({ preserveMode: true });
+      renderSchedule();
+    });
+  }
+}
+
+function bindSearchFilters() {
+  const mappings = [
+    ['period', elements.periodSearch],
+    ['professor', elements.professorSearch],
+    ['room', elements.roomSearch],
+    ['discipline', elements.disciplineSearch]
+  ];
+
+  mappings.forEach(([type, input]) => {
+    if (!input) return;
+    input.addEventListener('input', (event) => {
+      searchQueries[type] = event.target.value;
+      refreshLists();
+    });
+  });
+}
+
+function resetSearchFilters() {
+  searchQueries.period = '';
+  searchQueries.professor = '';
+  searchQueries.room = '';
+  searchQueries.discipline = '';
+
+  if (elements.periodSearch) elements.periodSearch.value = '';
+  if (elements.professorSearch) elements.professorSearch.value = '';
+  if (elements.roomSearch) elements.roomSearch.value = '';
+  if (elements.disciplineSearch) elements.disciplineSearch.value = '';
+}
+
+function bindForms() {
+  elements.periodForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = document.getElementById('period-name');
+    const name = input.value.trim();
+    if (!name) return;
+    state.periods.push({ id: generateId('period'), name });
+    input.value = '';
+    refreshLists();
+    updateEntitySelector();
+    persistState();
+  });
+
+  elements.professorForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = document.getElementById('professor-name');
+    const name = input.value.trim();
+    if (!name) return;
+    state.professors.push({ id: generateId('professor'), name });
+    input.value = '';
+    refreshLists();
+    updateEntitySelector();
+    persistState();
+  });
+
+  elements.roomForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = document.getElementById('room-name');
+    const name = input.value.trim();
+    if (!name) return;
+    state.rooms.push({ id: generateId('room'), name });
+    input.value = '';
+    refreshLists();
+    updateEntitySelector();
+    persistState();
+  });
+
+  elements.disciplineForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const nameInput = document.getElementById('discipline-name');
+    const name = nameInput.value.trim();
+    const period = elements.disciplinePeriodSelect.value;
+    const codeValue = elements.disciplineCodeInput?.value.trim() || '';
+    if (!name || !period) {
+      alert('Informe o nome e selecione um período.');
+      return;
+    }
+    if (codeValue && isDuplicateDisciplineCode(codeValue)) {
+      alert('Já existe uma disciplina com este código.');
+      return;
+    }
+    state.disciplines.push({
+      id: generateId('discipline'),
+      name,
+      periodId: period,
+      code: codeValue
+    });
+    nameInput.value = '';
+    if (elements.disciplineCodeInput) {
+      elements.disciplineCodeInput.value = '';
+    }
+    elements.disciplinePeriodSelect.value = '';
+    refreshLists();
+    persistState();
+  });
+}
+
+elements.viewTypeSelect.addEventListener('change', (event) => {
+  clearSelectedSlots();
+  state.view = event.target.value;
+  updateEntitySelector();
+  persistState();
+});
+
+elements.entitySelector.addEventListener('change', (event) => {
+  clearSelectedSlots({ preserveMode: true });
+  state.selectedEntity = event.target.value;
+  renderSchedule();
+  persistState();
+});
+
+function init() {
+  bindForms();
+  bindStorageControls();
+  bindManagementPanel();
+  bindSelectionControls();
+  bindSearchFilters();
+  resetSearchFilters();
+  updateSelectionUI();
+  setStorageFeedback('');
+  const restored = restoreStateFromStorage();
+  if (!restored) {
+    refreshLists();
+    elements.viewTypeSelect.value = state.view;
+    updateEntitySelector();
+  }
+  updateSelectionUI();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
