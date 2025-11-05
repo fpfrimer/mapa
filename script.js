@@ -16,6 +16,9 @@ let counters = {
   discipline: 1
 };
 
+const STORAGE_KEY = 'academic-planner-state-v1';
+const COUNTERS_KEY = 'academic-planner-counters-v1';
+
 const days = [
   { key: 'monday', label: 'Segunda' },
   { key: 'tuesday', label: 'Terça' },
@@ -87,7 +90,13 @@ const elements = {
   assignmentProfessor: document.getElementById('assignment-professor'),
   assignmentRoom: document.getElementById('assignment-room'),
   suggestions: document.getElementById('suggestions'),
-  removeAssignment: document.getElementById('remove-assignment')
+  removeAssignment: document.getElementById('remove-assignment'),
+  saveBrowserButton: document.getElementById('save-browser'),
+  restoreBrowserButton: document.getElementById('restore-browser'),
+  exportButton: document.getElementById('export-config'),
+  importInput: document.getElementById('import-config'),
+  clearBrowserButton: document.getElementById('clear-browser'),
+  storageFeedback: document.getElementById('storage-feedback')
 };
 
 function generateId(type) {
@@ -101,6 +110,14 @@ function renderEntityList(list, container) {
     li.textContent = item.name;
     container.appendChild(li);
   });
+}
+
+function refreshLists() {
+  renderEntityList(state.periods, elements.periodList);
+  renderEntityList(state.professors, elements.professorList);
+  renderEntityList(state.rooms, elements.roomList);
+  renderEntityList(state.disciplines, elements.disciplineList);
+  updateDisciplinePeriodOptions();
 }
 
 function updateDisciplinePeriodOptions() {
@@ -442,6 +459,7 @@ elements.assignmentForm.addEventListener('submit', (event) => {
     delete previous[key];
   }
 
+  persistState();
   closeModal();
   renderSchedule();
 });
@@ -466,6 +484,7 @@ elements.removeAssignment.addEventListener('click', () => {
   }
 
   if (removed) {
+    persistState();
     closeModal();
     renderSchedule();
   }
@@ -636,6 +655,195 @@ function updatePeriodByDiscipline() {
   }
 }
 
+function setStorageFeedback(message, variant = 'info') {
+  const { storageFeedback } = elements;
+  if (!storageFeedback) return;
+  storageFeedback.textContent = message;
+  storageFeedback.classList.remove('success', 'error', 'warning');
+  if (variant && variant !== 'info' && message) {
+    storageFeedback.classList.add(variant);
+  }
+}
+
+function getPersistableSnapshot() {
+  return {
+    periods: state.periods,
+    professors: state.professors,
+    rooms: state.rooms,
+    disciplines: state.disciplines,
+    schedule: state.schedule,
+    view: state.view,
+    selectedEntity: state.selectedEntity
+  };
+}
+
+function persistState(options = {}) {
+  const { notify = false } = options;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableSnapshot()));
+    localStorage.setItem(COUNTERS_KEY, JSON.stringify(counters));
+    if (notify) {
+      setStorageFeedback('Configuração salva no navegador.', 'success');
+    }
+  } catch (error) {
+    console.error('Erro ao salvar dados no navegador.', error);
+    setStorageFeedback('Não foi possível salvar os dados localmente.', 'error');
+  }
+}
+
+function nextCounterValue(list, prefix) {
+  const base = `${prefix}-`;
+  return (
+    list.reduce((max, item) => {
+      if (!item || typeof item.id !== 'string') return max;
+      if (!item.id.startsWith(base)) return max;
+      const numeric = parseInt(item.id.slice(base.length), 10);
+      return Number.isFinite(numeric) && numeric > max ? numeric : max;
+    }, 0) + 1
+  );
+}
+
+function rebuildCounters() {
+  counters = {
+    period: nextCounterValue(state.periods, 'period'),
+    professor: nextCounterValue(state.professors, 'professor'),
+    room: nextCounterValue(state.rooms, 'room'),
+    discipline: nextCounterValue(state.disciplines, 'discipline')
+  };
+}
+
+function applyStateFromData(data) {
+  if (!data || typeof data !== 'object') return;
+  state.periods = Array.isArray(data.periods) ? data.periods : [];
+  state.professors = Array.isArray(data.professors) ? data.professors : [];
+  state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
+  state.disciplines = Array.isArray(data.disciplines) ? data.disciplines : [];
+  state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
+  state.view = data.view || 'period';
+  state.selectedEntity = data.selectedEntity || '';
+  elements.viewTypeSelect.value = state.view;
+  refreshLists();
+  updateEntitySelector();
+}
+
+function restoreStateFromStorage(options = {}) {
+  const { notify = false } = options;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      if (notify) {
+        setStorageFeedback('Nenhuma configuração salva encontrada.', 'warning');
+      }
+      return false;
+    }
+    const parsed = JSON.parse(stored);
+    applyStateFromData(parsed);
+    const counterRaw = localStorage.getItem(COUNTERS_KEY);
+    if (counterRaw) {
+      const parsedCounters = JSON.parse(counterRaw);
+      counters = { ...counters, ...parsedCounters };
+    } else {
+      rebuildCounters();
+    }
+    persistState();
+    if (notify) {
+      setStorageFeedback('Configuração carregada do navegador.', 'success');
+    }
+    return true;
+  } catch (error) {
+    console.error('Erro ao carregar dados salvos.', error);
+    setStorageFeedback('Não foi possível carregar os dados salvos.', 'error');
+    return false;
+  }
+}
+
+function exportConfiguration() {
+  try {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      state: getPersistableSnapshot(),
+      counters
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `cronograma-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    setStorageFeedback('Arquivo JSON exportado com sucesso.', 'success');
+  } catch (error) {
+    console.error('Erro ao exportar configuração.', error);
+    setStorageFeedback('Não foi possível exportar os dados.', 'error');
+  }
+}
+
+function handleImportFile(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (loadEvent) => {
+    try {
+      const text = loadEvent.target?.result;
+      const parsed = JSON.parse(text);
+      const payload = parsed.state && typeof parsed.state === 'object' ? parsed.state : parsed;
+      applyStateFromData(payload);
+      if (parsed.counters && typeof parsed.counters === 'object') {
+        counters = { ...counters, ...parsed.counters };
+      } else {
+        rebuildCounters();
+      }
+      persistState();
+      setStorageFeedback('Configuração importada com sucesso.', 'success');
+    } catch (error) {
+      console.error('Erro ao importar arquivo de configuração.', error);
+      setStorageFeedback('Arquivo inválido. Verifique o conteúdo JSON.', 'error');
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  const confirmed = confirm('Tem certeza de que deseja remover todos os dados salvos?');
+  if (!confirmed) return;
+  state.periods = [];
+  state.professors = [];
+  state.rooms = [];
+  state.disciplines = [];
+  state.schedule = {};
+  state.view = 'period';
+  state.selectedEntity = '';
+  counters = { period: 1, professor: 1, room: 1, discipline: 1 };
+  elements.viewTypeSelect.value = state.view;
+  refreshLists();
+  updateEntitySelector();
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(COUNTERS_KEY);
+  setStorageFeedback('Dados removidos. Você pode começar um novo cronograma.', 'warning');
+}
+
+function bindStorageControls() {
+  if (elements.saveBrowserButton) {
+    elements.saveBrowserButton.addEventListener('click', () => persistState({ notify: true }));
+  }
+  if (elements.restoreBrowserButton) {
+    elements.restoreBrowserButton.addEventListener('click', () => restoreStateFromStorage({ notify: true }));
+  }
+  if (elements.exportButton) {
+    elements.exportButton.addEventListener('click', exportConfiguration);
+  }
+  if (elements.importInput) {
+    elements.importInput.addEventListener('change', handleImportFile);
+  }
+  if (elements.clearBrowserButton) {
+    elements.clearBrowserButton.addEventListener('click', clearAllData);
+  }
+}
+
 function bindForms() {
   elements.periodForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -644,9 +852,9 @@ function bindForms() {
     if (!name) return;
     state.periods.push({ id: generateId('period'), name });
     input.value = '';
-    renderEntityList(state.periods, elements.periodList);
-    updateDisciplinePeriodOptions();
+    refreshLists();
     updateEntitySelector();
+    persistState();
   });
 
   elements.professorForm.addEventListener('submit', (event) => {
@@ -656,8 +864,9 @@ function bindForms() {
     if (!name) return;
     state.professors.push({ id: generateId('professor'), name });
     input.value = '';
-    renderEntityList(state.professors, elements.professorList);
+    refreshLists();
     updateEntitySelector();
+    persistState();
   });
 
   elements.roomForm.addEventListener('submit', (event) => {
@@ -667,8 +876,9 @@ function bindForms() {
     if (!name) return;
     state.rooms.push({ id: generateId('room'), name });
     input.value = '';
-    renderEntityList(state.rooms, elements.roomList);
+    refreshLists();
     updateEntitySelector();
+    persistState();
   });
 
   elements.disciplineForm.addEventListener('submit', (event) => {
@@ -683,23 +893,33 @@ function bindForms() {
     state.disciplines.push({ id: generateId('discipline'), name, periodId: period });
     input.value = '';
     elements.disciplinePeriodSelect.value = '';
-    renderEntityList(state.disciplines, elements.disciplineList);
+    refreshLists();
+    persistState();
   });
 }
 
 elements.viewTypeSelect.addEventListener('change', (event) => {
   state.view = event.target.value;
   updateEntitySelector();
+  persistState();
 });
 
 elements.entitySelector.addEventListener('change', (event) => {
   state.selectedEntity = event.target.value;
   renderSchedule();
+  persistState();
 });
 
 function init() {
   bindForms();
-  updateEntitySelector();
+  bindStorageControls();
+  setStorageFeedback('');
+  const restored = restoreStateFromStorage();
+  if (!restored) {
+    refreshLists();
+    elements.viewTypeSelect.value = state.view;
+    updateEntitySelector();
+  }
 }
 
 if (document.readyState === 'loading') {

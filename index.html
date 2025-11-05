@@ -52,6 +52,22 @@
         </form>
         <ul id="discipline-list" class="entity-list"></ul>
       </section>
+
+      <section class="panel-section data-section">
+        <h2>Configurações</h2>
+        <p class="section-helper">Salve o cronograma para continuar a edição depois ou compartilhar com outras pessoas.</p>
+        <div class="data-actions">
+          <button type="button" id="save-browser">Salvar no navegador</button>
+          <button type="button" id="restore-browser">Recarregar salvos</button>
+          <button type="button" id="export-config">Exportar JSON</button>
+          <label class="import-label">
+            <input type="file" id="import-config" accept="application/json" />
+            <span>Importar JSON</span>
+          </label>
+          <button type="button" id="clear-browser" class="danger-outline">Limpar dados</button>
+        </div>
+        <p id="storage-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
+      </section>
     </aside>
 
     <section class="schedule-panel">
