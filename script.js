@@ -117,7 +117,7 @@ function colorWithAlpha(color, alpha = 0.18) {
 
 const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
-const SAVED_CONFIGS_KEY = 'academic-planner-library-v1';
+const CONFIG_API_URL = '/api/configurations';
 
 const days = [
   { key: 'monday', label: 'Segunda' },
@@ -1576,11 +1576,6 @@ function createConfigurationPackage(customState = null, customCounters = null) {
   };
 }
 
-function createSavedConfigId() {
-  const random = Math.random().toString(36).slice(2, 8);
-  return `config-${Date.now().toString(36)}-${random}`;
-}
-
 function normalizeConfigName(value) {
   return normalizeText(value || '');
 }
@@ -1598,59 +1593,108 @@ function sortSavedConfigurations() {
   });
 }
 
-function persistSavedConfigurations() {
+function sanitizeServerConfiguration(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const id = typeof entry.id === 'string' ? entry.id : '';
+  const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+  const savedAt = typeof entry.savedAt === 'string' && entry.savedAt ? entry.savedAt : new Date().toISOString();
+  if (!id || !name) return null;
+  const statePayload = entry.state && typeof entry.state === 'object' ? safeClone(entry.state) : null;
+  if (!statePayload) return null;
+  const countersPayload =
+    entry.counters && typeof entry.counters === 'object' ? safeClone(entry.counters) : null;
+  return {
+    id,
+    name,
+    savedAt,
+    state: statePayload,
+    counters: countersPayload
+  };
+}
+
+async function loadSavedConfigurationsFromServer(options = {}) {
+  const { notify = false } = options;
   try {
-    const payload = savedConfigurations.map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      savedAt: entry.savedAt,
-      state: safeClone(entry.state),
-      counters: safeClone(entry.counters)
-    }));
-    localStorage.setItem(SAVED_CONFIGS_KEY, JSON.stringify(payload));
-    return true;
+    const response = await fetch(CONFIG_API_URL, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Falha ao buscar configurações: ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    savedConfigurations = items.map(sanitizeServerConfiguration).filter(Boolean);
+    sortSavedConfigurations();
+    renderSavedConfigurations();
+    if (notify) {
+      setStorageFeedback('Lista de configurações carregada do servidor.', 'info');
+    }
   } catch (error) {
-    console.error('Erro ao atualizar a lista de configurações salvas.', error);
-    return false;
+    console.error('Erro ao carregar configurações do servidor.', error);
+    savedConfigurations = [];
+    renderSavedConfigurations();
+    setStorageFeedback('Não foi possível carregar as configurações do servidor.', 'error');
   }
 }
 
-function loadSavedConfigurationsFromStorage() {
-  try {
-    const raw = localStorage.getItem(SAVED_CONFIGS_KEY);
-    if (!raw) {
-      savedConfigurations = [];
-      return;
+async function sendConfigurationRequest(method, suffix = '', body = null) {
+  const url = suffix ? `${CONFIG_API_URL}/${encodeURIComponent(suffix)}` : CONFIG_API_URL;
+  const options = {
+    method,
+    headers: {
+      Accept: 'application/json'
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      savedConfigurations = [];
-      return;
-    }
-    savedConfigurations = parsed
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') return null;
-        const name = typeof entry.name === 'string' ? entry.name.trim() : '';
-        if (!name) return null;
-        const id = typeof entry.id === 'string' && entry.id ? entry.id : createSavedConfigId();
-        const savedAt = typeof entry.savedAt === 'string' && entry.savedAt ? entry.savedAt : new Date().toISOString();
-        const statePayload = entry.state && typeof entry.state === 'object' ? safeClone(entry.state) : null;
-        if (!statePayload) return null;
-        const countersPayload = entry.counters && typeof entry.counters === 'object' ? safeClone(entry.counters) : null;
-        return {
-          id,
-          name,
-          savedAt,
-          state: statePayload,
-          counters: countersPayload
-        };
-      })
-      .filter(Boolean);
-    sortSavedConfigurations();
-  } catch (error) {
-    console.error('Erro ao carregar configurações nomeadas.', error);
-    savedConfigurations = [];
+  };
+  if (body) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
   }
+
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    const error = new Error(message || `Falha na requisição: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  if (response.status === 204) {
+    return null;
+  }
+  const data = await response.json();
+  return data;
+}
+
+async function createServerConfigurationEntry(name, configuration) {
+  const payload = {
+    name,
+    state: safeClone(configuration.state),
+    counters:
+      configuration.counters && typeof configuration.counters === 'object'
+        ? safeClone(configuration.counters)
+        : null
+  };
+  const data = await sendConfigurationRequest('POST', '', payload);
+  return sanitizeServerConfiguration(data);
+}
+
+async function updateServerConfigurationEntry(id, name, configuration) {
+  const payload = {
+    name,
+    state: safeClone(configuration.state),
+    counters:
+      configuration.counters && typeof configuration.counters === 'object'
+        ? safeClone(configuration.counters)
+        : null
+  };
+  const data = await sendConfigurationRequest('PUT', id, payload);
+  return sanitizeServerConfiguration(data);
+}
+
+async function deleteServerConfigurationEntry(id) {
+  await sendConfigurationRequest('DELETE', id);
 }
 
 function formatSavedConfigDate(isoString) {
@@ -1675,7 +1719,7 @@ function renderSavedConfigurations() {
   if (!savedConfigurations.length) {
     const emptyItem = document.createElement('li');
     emptyItem.className = 'saved-config-empty';
-    emptyItem.textContent = 'Nenhuma configuração salva neste navegador.';
+    emptyItem.textContent = 'Nenhuma configuração salva no servidor.';
     list.appendChild(emptyItem);
     return;
   }
@@ -1731,7 +1775,7 @@ function renderSavedConfigurations() {
   });
 }
 
-function upsertSavedConfiguration(name, configuration, options = {}) {
+async function upsertSavedConfiguration(name, configuration, options = {}) {
   const { skipConfirmation = false, notify = true } = options;
   const trimmedName = (name || '').trim();
   if (!trimmedName) {
@@ -1767,37 +1811,48 @@ function upsertSavedConfiguration(name, configuration, options = {}) {
         return 'cancelled';
       }
     }
-    savedConfigurations[existingIndex] = {
-      ...savedConfigurations[existingIndex],
-      name: trimmedName,
-      savedAt: new Date().toISOString(),
-      state: safeClone(payload.state),
-      counters: safeClone(payload.counters)
-    };
+    try {
+      const updated = await updateServerConfigurationEntry(
+        savedConfigurations[existingIndex].id,
+        trimmedName,
+        payload
+      );
+      if (!updated) {
+        throw new Error('Resposta inválida do servidor.');
+      }
+      savedConfigurations[existingIndex] = updated;
+    } catch (error) {
+      console.error('Erro ao atualizar configuração no servidor.', error);
+      if (notify) {
+        setStorageFeedback('Não foi possível atualizar a configuração no servidor.', 'error');
+      }
+      return 'error';
+    }
   } else {
-    savedConfigurations.push({
-      id: createSavedConfigId(),
-      name: trimmedName,
-      savedAt: new Date().toISOString(),
-      state: safeClone(payload.state),
-      counters: safeClone(payload.counters)
-    });
+    try {
+      const created = await createServerConfigurationEntry(trimmedName, payload);
+      if (!created) {
+        throw new Error('Resposta inválida do servidor.');
+      }
+      savedConfigurations.push(created);
+    } catch (error) {
+      console.error('Erro ao criar configuração no servidor.', error);
+      if (notify) {
+        setStorageFeedback('Não foi possível salvar a configuração no servidor.', 'error');
+      }
+      return 'error';
+    }
   }
 
   sortSavedConfigurations();
-  const persisted = persistSavedConfigurations();
   renderSavedConfigurations();
   if (notify) {
-    if (persisted) {
-      setStorageFeedback(`Configuração "${trimmedName}" salva neste navegador.`, 'success');
-    } else {
-      setStorageFeedback('Não foi possível atualizar as configurações salvas.', 'error');
-    }
+    setStorageFeedback(`Configuração "${trimmedName}" salva no servidor.`, 'success');
   }
-  return persisted ? 'success' : 'error';
+  return 'success';
 }
 
-function handleSavedConfigurationsClick(event) {
+async function handleSavedConfigurationsClick(event) {
   const target = event.target.closest('button[data-config-action]');
   if (!target) return;
 
@@ -1829,24 +1884,25 @@ function handleSavedConfigurationsClick(event) {
   }
 
   if (action === 'delete') {
-    const confirmed = confirm(`Deseja remover a configuração "${config.name}" desta máquina?`);
+    const confirmed = confirm(`Deseja remover a configuração "${config.name}" do servidor?`);
     if (!confirmed) return;
-    savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
-    const persisted = persistSavedConfigurations();
-    renderSavedConfigurations();
-    if (persisted) {
-      setStorageFeedback(`Configuração "${config.name}" removida.`, 'warning');
-    } else {
-      setStorageFeedback('Não foi possível atualizar as configurações salvas.', 'error');
+    try {
+      await deleteServerConfigurationEntry(configId);
+      savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
+      renderSavedConfigurations();
+      setStorageFeedback(`Configuração "${config.name}" removida do servidor.`, 'warning');
+    } catch (error) {
+      console.error('Erro ao remover configuração do servidor.', error);
+      setStorageFeedback('Não foi possível remover a configuração do servidor.', 'error');
     }
   }
 }
 
-function handleConfigSaveSubmit(event) {
+async function handleConfigSaveSubmit(event) {
   event.preventDefault();
   const input = elements.configNameInput;
   const value = input ? input.value.trim() : '';
-  const result = upsertSavedConfiguration(value);
+  const result = await upsertSavedConfiguration(value);
   if (result === 'success' && input) {
     input.value = '';
     input.focus();
@@ -2027,7 +2083,7 @@ function handleImportFile(event) {
   const [file] = event.target.files;
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (loadEvent) => {
+  reader.onload = async (loadEvent) => {
     try {
       const text = loadEvent.target?.result;
       const parsed = JSON.parse(text);
@@ -2053,7 +2109,7 @@ function handleImportFile(event) {
       const fallbackName = trimmedName
         ? trimmedName
         : `Importado em ${formatSavedConfigDate(new Date().toISOString())}`;
-      const result = upsertSavedConfiguration(
+      const result = await upsertSavedConfiguration(
         fallbackName,
         { state: sanitizedState, counters: importedCounters },
         { skipConfirmation: !trimmedName, notify: false }
@@ -2065,7 +2121,7 @@ function handleImportFile(event) {
         setStorageFeedback('Configuração importada para edição atual.', 'success');
       } else {
         setStorageFeedback(
-          'Configuração importada, mas não foi possível atualizar as configurações salvas.',
+          'Configuração importada, mas não foi possível atualizar as configurações no servidor.',
           'warning'
         );
       }
@@ -2081,7 +2137,7 @@ function handleImportFile(event) {
 
 function clearAllData() {
   const confirmed = confirm(
-    'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas.'
+    'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas no servidor.'
   );
   if (!confirmed) return;
   state.periods = [];
@@ -2101,7 +2157,7 @@ function clearAllData() {
   updateEntitySelector();
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(COUNTERS_KEY);
-  setStorageFeedback('Cronograma atual limpo. As configurações nomeadas continuam disponíveis.', 'warning');
+  setStorageFeedback('Cronograma atual limpo. As configurações nomeadas continuam disponíveis no servidor.', 'warning');
 }
 
 function bindStorageControls() {
@@ -2113,9 +2169,7 @@ function bindStorageControls() {
   }
   if (elements.refreshConfigsButton) {
     elements.refreshConfigsButton.addEventListener('click', () => {
-      loadSavedConfigurationsFromStorage();
-      renderSavedConfigurations();
-      setStorageFeedback('Lista de configurações atualizada.', 'info');
+      loadSavedConfigurationsFromServer({ notify: true });
     });
   }
   if (elements.saveBrowserButton) {
@@ -2328,9 +2382,8 @@ elements.entitySelector.addEventListener('change', (event) => {
   persistState();
 });
 
-function init() {
-  loadSavedConfigurationsFromStorage();
-  renderSavedConfigurations();
+async function init() {
+  await loadSavedConfigurationsFromServer();
   bindForms();
   bindStorageControls();
   bindManagementPanel();
@@ -2348,8 +2401,15 @@ function init() {
   updateSelectionUI();
 }
 
+function startApp() {
+  init().catch((error) => {
+    console.error('Falha durante a inicialização.', error);
+    setStorageFeedback('Erro ao iniciar o aplicativo. Verifique a conexão com o servidor.', 'error');
+  });
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', startApp);
 } else {
-  init();
+  startApp();
 }
