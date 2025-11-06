@@ -119,6 +119,77 @@ const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
 const CONFIG_API_URL = '/api/configurations';
 
+const professorFormDisciplineIds = new Set();
+
+function sanitizeDisciplineIdList(list) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(list) ? list : [])
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .forEach((value) => {
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      result.push(value);
+    });
+  return result;
+}
+
+function normalizeProfessorRecord(professor) {
+  if (!professor || typeof professor !== 'object') return null;
+  const legacyDiscipline =
+    typeof professor.disciplineId === 'string' && professor.disciplineId
+      ? [professor.disciplineId]
+      : [];
+  const disciplineIds = sanitizeDisciplineIdList(
+    Array.isArray(professor.disciplineIds) ? professor.disciplineIds : legacyDiscipline
+  );
+  const base = { ...professor };
+  delete base.disciplineId;
+  delete base.disciplineIds;
+  delete base.isCourseArea;
+  return {
+    ...base,
+    disciplineIds,
+    isCourseArea: Boolean(professor.isCourseArea)
+  };
+}
+
+function getProfessorDisciplineIds(professor) {
+  if (!professor) return [];
+  const ids = sanitizeDisciplineIdList(professor.disciplineIds);
+  return ids.filter((id) => state.disciplines.some((discipline) => discipline.id === id));
+}
+
+function getProfessorDisciplineLabels(professor) {
+  return getProfessorDisciplineIds(professor)
+    .map((id) => getDisciplineById(id))
+    .filter(Boolean)
+    .map((discipline) => formatDisciplineLabel(discipline));
+}
+
+function professorHasDiscipline(professor, disciplineId) {
+  if (!disciplineId) return false;
+  return getProfessorDisciplineIds(professor).includes(disciplineId);
+}
+
+function getProfessorDetailParts(professor) {
+  const details = [];
+  const labels = getProfessorDisciplineLabels(professor);
+  if (labels.length) {
+    details.push(labels.join(', '));
+  }
+  if (professor?.isCourseArea) {
+    details.push('Área do curso');
+  }
+  return details;
+}
+
+function formatProfessorOptionLabel(professor) {
+  if (!professor) return '';
+  const details = getProfessorDetailParts(professor);
+  return details.length ? `${professor.name} — ${details.join(' • ')}` : professor.name;
+}
+
 const days = [
   { key: 'monday', label: 'Segunda' },
   { key: 'tuesday', label: 'Terça' },
@@ -201,6 +272,9 @@ const elements = {
   roomList: document.getElementById('room-list'),
   disciplineList: document.getElementById('discipline-list'),
   professorDisciplineSelect: document.getElementById('professor-discipline'),
+  professorDisciplineAdd: document.getElementById('professor-discipline-add'),
+  professorDisciplineList: document.getElementById('professor-discipline-list'),
+  professorAreaCheckbox: document.getElementById('professor-area'),
   entityMenu: document.querySelector('.entity-menu'),
   menuButtons: document.querySelectorAll('.menu-button'),
   managementPanel: document.getElementById('management-panel'),
@@ -259,12 +333,9 @@ function matchesSearchQuery(item, type, query) {
   const name = normalizeText(item?.name || '');
   if (name.includes(query)) return true;
   if (type === 'professor') {
-    const discipline = getDisciplineById(item?.disciplineId);
-    if (discipline) {
-      const disciplineName = normalizeText(discipline.name);
-      if (disciplineName.includes(query)) return true;
-      const disciplineCode = normalizeText(discipline.code);
-      if (disciplineCode && disciplineCode.includes(query)) return true;
+    const labels = getProfessorDisciplineLabels(item || {});
+    if (labels.some((label) => normalizeText(label).includes(query))) {
+      return true;
     }
   }
   if (type === 'discipline') {
@@ -378,7 +449,8 @@ function renderEntityList(list, container, type) {
       nameInput.placeholder = 'Nome';
       form.appendChild(nameInput);
 
-      let professorDisciplineSelect = null;
+      let professorDisciplineEditor = null;
+      let areaCheckbox = null;
       let codeInput = null;
       let periodSelect = null;
       if (type === 'discipline') {
@@ -407,23 +479,19 @@ function renderEntityList(list, container, type) {
         periodSelect.value = item.periodId || '';
         form.appendChild(periodSelect);
       } else if (type === 'professor') {
-        professorDisciplineSelect = document.createElement('select');
-        professorDisciplineSelect.className = 'inline-select';
+        professorDisciplineEditor = createProfessorDisciplineEditor(item.disciplineIds);
+        form.appendChild(professorDisciplineEditor.container);
 
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'Disciplina (opcional)';
-        professorDisciplineSelect.appendChild(defaultOption);
-
-        state.disciplines.forEach((discipline) => {
-          const option = document.createElement('option');
-          option.value = discipline.id;
-          option.textContent = formatDisciplineLabel(discipline);
-          professorDisciplineSelect.appendChild(option);
-        });
-
-        professorDisciplineSelect.value = item.disciplineId || '';
-        form.appendChild(professorDisciplineSelect);
+        const checkboxLabel = document.createElement('label');
+        checkboxLabel.className = 'checkbox-field';
+        areaCheckbox = document.createElement('input');
+        areaCheckbox.type = 'checkbox';
+        areaCheckbox.checked = Boolean(item.isCourseArea);
+        checkboxLabel.appendChild(areaCheckbox);
+        const checkboxText = document.createElement('span');
+        checkboxText.textContent = 'Professor da área do curso';
+        checkboxLabel.appendChild(checkboxText);
+        form.appendChild(checkboxLabel);
       }
 
       const actions = document.createElement('div');
@@ -463,11 +531,11 @@ function renderEntityList(list, container, type) {
           }
           updates.periodId = selectedPeriod;
         } else if (type === 'professor') {
-          const selectedDiscipline = professorDisciplineSelect?.value || '';
-          const isValidDiscipline = state.disciplines.some(
-            (discipline) => discipline.id === selectedDiscipline
-          );
-          updates.disciplineId = isValidDiscipline ? selectedDiscipline : '';
+          const selectedIds = professorDisciplineEditor
+            ? professorDisciplineEditor.getSelectedIds()
+            : [];
+          updates.disciplineIds = sanitizeDisciplineIdList(selectedIds);
+          updates.isCourseArea = Boolean(areaCheckbox?.checked);
         }
 
         saveEntityEdit(type, item.id, updates);
@@ -514,13 +582,19 @@ function renderEntityList(list, container, type) {
       }
 
       if (type === 'professor') {
-        const discipline = getDisciplineById(item.disciplineId);
-        if (discipline) {
-          const meta = document.createElement('span');
-          meta.className = 'entity-meta';
-          meta.textContent = `Disciplina vinculada: ${formatDisciplineLabel(discipline)}`;
-          info.appendChild(meta);
+        if (item.isCourseArea) {
+          const badge = document.createElement('span');
+          badge.className = 'entity-badge area';
+          badge.textContent = 'Área do curso';
+          info.appendChild(badge);
         }
+        const labels = getProfessorDisciplineLabels(item);
+        const meta = document.createElement('span');
+        meta.className = 'entity-meta';
+        meta.textContent = labels.length
+          ? `Disciplinas vinculadas: ${labels.join(', ')}`
+          : 'Sem disciplinas vinculadas';
+        info.appendChild(meta);
       }
 
       li.appendChild(info);
@@ -551,6 +625,175 @@ function renderEntityList(list, container, type) {
 
     container.appendChild(li);
   });
+}
+
+function createProfessorDisciplineEditor(initialIds = []) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'multi-select-field';
+
+  const control = document.createElement('div');
+  control.className = 'discipline-picker-control';
+
+  const select = document.createElement('select');
+  select.className = 'inline-select';
+
+  const addButton = document.createElement('button');
+  addButton.type = 'button';
+  addButton.className = 'icon-button small';
+  addButton.title = 'Adicionar disciplina';
+  addButton.setAttribute('aria-label', 'Adicionar disciplina');
+  addButton.innerHTML = '<span aria-hidden="true">➕</span><span class="visually-hidden">Adicionar</span>';
+
+  control.appendChild(select);
+  control.appendChild(addButton);
+
+  const list = document.createElement('ul');
+  list.className = 'chip-list';
+
+  wrapper.appendChild(control);
+  wrapper.appendChild(list);
+
+  const selected = new Set(sanitizeDisciplineIdList(initialIds));
+
+  function refreshOptions() {
+    const current = select.value;
+    select.innerHTML = '<option value="">Adicionar disciplina (opcional)</option>';
+    state.disciplines.forEach((discipline) => {
+      const option = document.createElement('option');
+      option.value = discipline.id;
+      option.textContent = formatDisciplineLabel(discipline);
+      select.appendChild(option);
+    });
+    const hasCurrent = state.disciplines.some((discipline) => discipline.id === current);
+    select.value = hasCurrent ? current : '';
+  }
+
+  function refreshList() {
+    list.innerHTML = '';
+    const items = [];
+    Array.from(selected).forEach((id) => {
+      const discipline = getDisciplineById(id);
+      if (!discipline) {
+        selected.delete(id);
+        return;
+      }
+      items.push({ id, label: formatDisciplineLabel(discipline) });
+    });
+    items
+      .sort((a, b) => normalizeText(a.label).localeCompare(normalizeText(b.label)))
+      .forEach(({ id, label }) => {
+        const li = document.createElement('li');
+        li.className = 'chip-item';
+        const text = document.createElement('span');
+        text.textContent = label;
+        li.appendChild(text);
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'icon-button small danger chip-remove';
+        removeButton.dataset.id = id;
+        removeButton.title = 'Remover disciplina';
+        removeButton.setAttribute('aria-label', 'Remover disciplina');
+        removeButton.innerHTML =
+          '<span aria-hidden="true">➖</span><span class="visually-hidden">Remover</span>';
+        li.appendChild(removeButton);
+        list.appendChild(li);
+      });
+  }
+
+  addButton.addEventListener('click', () => {
+    const value = select.value;
+    if (!value) return;
+    if (selected.has(value)) {
+      select.value = '';
+      return;
+    }
+    const exists = state.disciplines.some((discipline) => discipline.id === value);
+    if (!exists) {
+      select.value = '';
+      return;
+    }
+    selected.add(value);
+    select.value = '';
+    refreshList();
+  });
+
+  list.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-id]');
+    if (!button) return;
+    const { id } = button.dataset;
+    selected.delete(id);
+    refreshList();
+  });
+
+  refreshOptions();
+  refreshList();
+
+  return {
+    container: wrapper,
+    getSelectedIds: () => Array.from(selected)
+  };
+}
+
+function renderProfessorFormDisciplineChips() {
+  const { professorDisciplineList } = elements;
+  if (!professorDisciplineList) return;
+  const items = [];
+  Array.from(professorFormDisciplineIds).forEach((id) => {
+    const discipline = getDisciplineById(id);
+    if (!discipline) {
+      professorFormDisciplineIds.delete(id);
+      return;
+    }
+    items.push({ id, label: formatDisciplineLabel(discipline) });
+  });
+  professorDisciplineList.innerHTML = '';
+  items
+    .sort((a, b) => normalizeText(a.label).localeCompare(normalizeText(b.label)))
+    .forEach(({ id, label }) => {
+      const li = document.createElement('li');
+      li.className = 'chip-item';
+      const text = document.createElement('span');
+      text.textContent = label;
+      li.appendChild(text);
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'icon-button small danger chip-remove';
+      removeButton.dataset.id = id;
+      removeButton.title = 'Remover disciplina';
+      removeButton.setAttribute('aria-label', 'Remover disciplina');
+      removeButton.innerHTML =
+        '<span aria-hidden="true">➖</span><span class="visually-hidden">Remover</span>';
+      li.appendChild(removeButton);
+      professorDisciplineList.appendChild(li);
+    });
+}
+
+function setupProfessorFormControls() {
+  const { professorDisciplineSelect, professorDisciplineAdd, professorDisciplineList } = elements;
+  if (!professorDisciplineSelect || !professorDisciplineAdd || !professorDisciplineList) return;
+
+  professorDisciplineAdd.addEventListener('click', () => {
+    const value = professorDisciplineSelect.value;
+    if (!value) return;
+    const exists = state.disciplines.some((discipline) => discipline.id === value);
+    if (!exists) {
+      professorDisciplineSelect.value = '';
+      return;
+    }
+    professorFormDisciplineIds.add(value);
+    professorDisciplineSelect.value = '';
+    renderProfessorFormDisciplineChips();
+  });
+
+  professorDisciplineList.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-id]');
+    if (!button) return;
+    const { id } = button.dataset;
+    professorFormDisciplineIds.delete(id);
+    renderProfessorFormDisciplineChips();
+  });
+
+  renderProfessorFormDisciplineChips();
 }
 
 function openManagementPanel(panelKey) {
@@ -655,7 +898,11 @@ function saveEntityEdit(type, id, updates) {
       moveDisciplineAssignments(id, previousPeriod, newPeriod);
     }
   } else if (type === 'professor') {
-    entity.disciplineId = updates.disciplineId || '';
+    const sanitized = sanitizeDisciplineIdList(updates.disciplineIds || []);
+    entity.disciplineIds = sanitized.filter((value) =>
+      state.disciplines.some((discipline) => discipline.id === value)
+    );
+    entity.isCourseArea = Boolean(updates.isCourseArea);
   }
 
   sortStateCollection(type);
@@ -728,17 +975,17 @@ function deleteEntity(type, id) {
       state.disciplines = state.disciplines.filter((discipline) => discipline.periodId !== id);
       purgeSchedule((periodId, entry) => removedDisciplineIds.includes(entry.disciplineId));
       state.professors.forEach((professor) => {
-        if (removedDisciplineIds.includes(professor.disciplineId)) {
-          professor.disciplineId = '';
-        }
+        const sanitized = sanitizeDisciplineIdList(professor.disciplineIds);
+        const filtered = sanitized.filter((value) => !removedDisciplineIds.includes(value));
+        professor.disciplineIds = filtered;
       });
     }
   } else if (type === 'discipline') {
     purgeSchedule((periodId, entry) => entry.disciplineId === id);
     state.professors.forEach((professor) => {
-      if (professor.disciplineId === id) {
-        professor.disciplineId = '';
-      }
+      const sanitized = sanitizeDisciplineIdList(professor.disciplineIds);
+      const filtered = sanitized.filter((value) => value !== id);
+      professor.disciplineIds = filtered;
     });
   } else if (type === 'professor') {
     purgeSchedule((periodId, entry) => entry.professorId === id);
@@ -779,17 +1026,20 @@ function updateDisciplinePeriodOptions() {
 
 function updateProfessorDisciplineOptions() {
   const { professorDisciplineSelect } = elements;
-  if (!professorDisciplineSelect) return;
-  const currentValue = professorDisciplineSelect.value;
-  professorDisciplineSelect.innerHTML = '<option value="">Disciplina (opcional)</option>';
-  state.disciplines.forEach((discipline) => {
-    const option = document.createElement('option');
-    option.value = discipline.id;
-    option.textContent = formatDisciplineLabel(discipline);
-    professorDisciplineSelect.appendChild(option);
-  });
-  const hasCurrent = state.disciplines.some((discipline) => discipline.id === currentValue);
-  professorDisciplineSelect.value = hasCurrent ? currentValue : '';
+  if (professorDisciplineSelect) {
+    const currentValue = professorDisciplineSelect.value;
+    professorDisciplineSelect.innerHTML =
+      '<option value="">Adicionar disciplina (opcional)</option>';
+    state.disciplines.forEach((discipline) => {
+      const option = document.createElement('option');
+      option.value = discipline.id;
+      option.textContent = formatDisciplineLabel(discipline);
+      professorDisciplineSelect.appendChild(option);
+    });
+    const hasCurrent = state.disciplines.some((discipline) => discipline.id === currentValue);
+    professorDisciplineSelect.value = hasCurrent ? currentValue : '';
+  }
+  renderProfessorFormDisciplineChips();
 }
 
 function updateEntitySelector() {
@@ -804,9 +1054,12 @@ function updateEntitySelector() {
     option.value = item.id;
     let label = item.name;
     if (state.view === 'professor') {
-      const discipline = getDisciplineById(item.disciplineId);
-      if (discipline) {
-        label = `${item.name} • ${formatDisciplineLabel(discipline)}`;
+      const disciplineLabels = getProfessorDisciplineLabels(item);
+      if (disciplineLabels.length) {
+        label = `${item.name} • ${disciplineLabels.join(', ')}`;
+      }
+      if (item.isCourseArea) {
+        label = `${label} • Área do curso`;
       }
     }
     option.textContent = label;
@@ -976,7 +1229,12 @@ function buildCellContent(assignments) {
       const lines = [];
       if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
       if (period) lines.push(`<span class="badge period">${period.name}</span>`);
-      if (professor) lines.push(`<span class="badge professor">${professor.name}</span>`);
+      if (professor) {
+        lines.push(`<span class="badge professor">${professor.name}</span>`);
+        if (professor.isCourseArea) {
+          lines.push('<span class="badge area">Área do curso</span>');
+        }
+      }
       if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
       const classes = ['slot-content'];
       const styleParts = [];
@@ -1412,8 +1670,8 @@ function updateSuggestions() {
   });
 
   const availableProfessorNames = availableProfessors.map((professor) => {
-    const linked = getDisciplineById(professor.disciplineId);
-    return linked ? `${professor.name} (${formatDisciplineLabel(linked)})` : professor.name;
+    const details = getProfessorDetailParts(professor);
+    return details.length ? `${professor.name} (${details.join(' • ')})` : professor.name;
   });
 
   const periodConflicts = [];
@@ -1467,13 +1725,18 @@ function updateSuggestions() {
   );
 
   if (disciplineId) {
-    const recommendedProfessors = availableProfessors.filter(
-      (professor) => professor.disciplineId === disciplineId
+    const recommendedProfessors = availableProfessors.filter((professor) =>
+      professorHasDiscipline(professor, disciplineId)
     );
     if (recommendedProfessors.length) {
       suggestions.push(
         `<span><strong>Professores vinculados à disciplina:</strong> ${recommendedProfessors
-          .map((professor) => professor.name)
+          .map((professor) => {
+            const details = getProfessorDetailParts(professor);
+            return details.length
+              ? `${professor.name} (${details.join(' • ')})`
+              : professor.name;
+          })
           .join(', ')}</span>`
       );
     }
@@ -1481,7 +1744,7 @@ function updateSuggestions() {
 
   if (disciplineId && professorId) {
     const selectedProfessor = getProfessorById(professorId);
-    if (selectedProfessor?.disciplineId && selectedProfessor.disciplineId !== disciplineId) {
+    if (selectedProfessor && !professorHasDiscipline(selectedProfessor, disciplineId)) {
       suggestions.push(
         '<span class="suggestion-warning">Professor selecionado não está vinculado a esta disciplina.</span>'
       );
@@ -1517,10 +1780,7 @@ function populateModalSelects() {
   state.professors.forEach((professor) => {
     const option = document.createElement('option');
     option.value = professor.id;
-    const linkedDiscipline = getDisciplineById(professor.disciplineId);
-    option.textContent = linkedDiscipline
-      ? `${professor.name} — ${formatDisciplineLabel(linkedDiscipline)}`
-      : professor.name;
+    option.textContent = formatProfessorOptionLabel(professor);
     elements.assignmentProfessor.appendChild(option);
   });
 
@@ -1961,13 +2221,6 @@ function rebuildCounters() {
 function applyStateFromData(data) {
   if (!data || typeof data !== 'object') return;
   state.periods = Array.isArray(data.periods) ? data.periods : [];
-  state.professors = Array.isArray(data.professors)
-    ? data.professors.map((professor) => ({
-        ...professor,
-        disciplineId: typeof professor?.disciplineId === 'string' ? professor.disciplineId : ''
-      }))
-    : [];
-  state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
   state.disciplines = Array.isArray(data.disciplines)
     ? data.disciplines.map((discipline) => ({
         ...discipline,
@@ -1975,6 +2228,16 @@ function applyStateFromData(data) {
         color: typeof discipline?.color === 'string' ? discipline.color : ''
       }))
     : [];
+  state.professors = Array.isArray(data.professors)
+    ? data.professors
+        .map((professor) => normalizeProfessorRecord(professor))
+        .filter(Boolean)
+        .map((professor) => ({
+          ...professor,
+          disciplineIds: getProfessorDisciplineIds(professor)
+        }))
+    : [];
+  state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
@@ -1983,6 +2246,14 @@ function applyStateFromData(data) {
   state.selectedSlots = new Set();
   state.multiSelectMode = false;
   elements.viewTypeSelect.value = state.view;
+  professorFormDisciplineIds.clear();
+  if (elements.professorDisciplineSelect) {
+    elements.professorDisciplineSelect.value = '';
+  }
+  if (elements.professorAreaCheckbox) {
+    elements.professorAreaCheckbox.checked = false;
+  }
+  renderProfessorFormDisciplineChips();
   ensureDisciplineColors();
   sortAllCollections();
   refreshLists();
@@ -2152,6 +2423,14 @@ function clearAllData() {
   clearSelectedSlots();
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
   elements.viewTypeSelect.value = state.view;
+  professorFormDisciplineIds.clear();
+  if (elements.professorDisciplineSelect) {
+    elements.professorDisciplineSelect.value = '';
+  }
+  if (elements.professorAreaCheckbox) {
+    elements.professorAreaCheckbox.checked = false;
+  }
+  renderProfessorFormDisciplineChips();
   resetSearchFilters();
   refreshLists();
   updateEntitySelector();
@@ -2310,15 +2589,26 @@ function bindForms() {
     const input = document.getElementById('professor-name');
     const name = input.value.trim();
     if (!name) return;
-    const disciplineSelect = elements.professorDisciplineSelect;
-    const selectedDisciplineId = disciplineSelect ? disciplineSelect.value : '';
-    const validDisciplineId = state.disciplines.some(
-      (discipline) => discipline.id === selectedDisciplineId
-    )
-      ? selectedDisciplineId
-      : '';
-    state.professors.push({ id: generateId('professor'), name, disciplineId: validDisciplineId });
+    const selectedIds = sanitizeDisciplineIdList(Array.from(professorFormDisciplineIds));
+    const validIds = selectedIds.filter((id) =>
+      state.disciplines.some((discipline) => discipline.id === id)
+    );
+    const areaCheckbox = elements.professorAreaCheckbox;
+    state.professors.push({
+      id: generateId('professor'),
+      name,
+      disciplineIds: validIds,
+      isCourseArea: Boolean(areaCheckbox?.checked)
+    });
     input.value = '';
+    professorFormDisciplineIds.clear();
+    if (elements.professorDisciplineSelect) {
+      elements.professorDisciplineSelect.value = '';
+    }
+    renderProfessorFormDisciplineChips();
+    if (areaCheckbox) {
+      areaCheckbox.checked = false;
+    }
     refreshLists();
     updateEntitySelector();
     persistState();
@@ -2384,6 +2674,7 @@ elements.entitySelector.addEventListener('change', (event) => {
 
 async function init() {
   await loadSavedConfigurationsFromServer();
+  setupProfessorFormControls();
   bindForms();
   bindStorageControls();
   bindManagementPanel();

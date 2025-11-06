@@ -237,6 +237,63 @@ main {
   background: var(--primary-dark);
 }
 
+.professor-form {
+  align-items: flex-start;
+}
+
+.professor-form button[type='submit'] {
+  margin-top: 0.25rem;
+  align-self: flex-start;
+}
+
+.discipline-picker-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.discipline-picker-control select {
+  flex: 1 1 auto;
+}
+
+.professor-discipline-field,
+.multi-select-field {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(41, 98, 255, 0.12);
+  color: var(--primary-dark);
+}
+
+.chip-item .icon-button {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.icon-button.small {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
 .entity-list {
   list-style: none;
   margin: 0;
@@ -348,6 +405,20 @@ main {
 .icon-button.danger:hover {
   background: var(--danger);
   color: #fff;
+}
+
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
 }
 
 .entity-empty {
@@ -774,6 +845,28 @@ button.primary:hover {
 .badge.professor {
   background: rgba(255, 152, 0, 0.18);
   color: #ef6c00;
+}
+
+.badge.area,
+.entity-badge.area {
+  background: rgba(0, 150, 136, 0.18);
+  color: #00695c;
+}
+
+.entity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.05);
+  margin-top: 0.35rem;
+  width: fit-content;
+}
+
+.entity-badge + .entity-meta {
+  margin-top: 0.25rem;
 }
 
 .data-section .section-helper {
