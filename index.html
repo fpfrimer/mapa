@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa de Horários Acadêmicos</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Mapa de horários acadêmicos COELE-TD</h1>
+  </header>
+
+  <main>
+    <nav class="entity-menu" aria-label="Gerenciar cadastros">
+      <button type="button" class="menu-button" data-panel="periods" aria-controls="panel-periods" aria-expanded="false">
+        <span class="icon" aria-hidden="true">🗓️</span>
+        <span class="label">Períodos</span>
+      </button>
+      <button type="button" class="menu-button" data-panel="professors" aria-controls="panel-professors" aria-expanded="false">
+        <span class="icon" aria-hidden="true">👩‍🏫</span>
+        <span class="label">Professores</span>
+      </button>
+      <button type="button" class="menu-button" data-panel="rooms" aria-controls="panel-rooms" aria-expanded="false">
+        <span class="icon" aria-hidden="true">🏫</span>
+        <span class="label">Salas</span>
+      </button>
+      <button type="button" class="menu-button" data-panel="disciplines" aria-controls="panel-disciplines" aria-expanded="false">
+        <span class="icon" aria-hidden="true">📚</span>
+        <span class="label">Disciplinas</span>
+      </button>
+      <button type="button" class="menu-button" data-panel="settings" aria-controls="panel-settings" aria-expanded="false">
+        <span class="icon" aria-hidden="true">⚙️</span>
+        <span class="label">Configurações</span>
+      </button>
+    </nav>
+
+    <section class="schedule-panel">
+      <div class="view-controls">
+        <div class="control-group">
+          <label for="view-type">Visualizar por:</label>
+          <select id="view-type">
+            <option value="period">Período</option>
+            <option value="professor">Professor</option>
+            <option value="room">Sala</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="entity-selector">Selecionar:</label>
+          <select id="entity-selector">
+            <option value="">Escolha um item</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="selection-tools" aria-live="polite">
+        <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
+          Ativar seleção múltipla
+        </button>
+        <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
+        <div class="selection-actions">
+          <button type="button" id="edit-selection" disabled>Editar seleção</button>
+          <button type="button" id="clear-selection" disabled>Limpar</button>
+        </div>
+      </div>
+
+      <div id="schedule-container" class="schedule-container">
+        <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
+      </div>
+    </section>
+  </main>
+
+  <aside id="management-panel" class="management-panel hidden" aria-hidden="true" tabindex="-1">
+    <div class="panel-header">
+      <h2 id="panel-title">Gerenciar</h2>
+      <button type="button" class="panel-close" aria-label="Fechar painel">&times;</button>
+    </div>
+    <div class="panel-content">
+      <section id="panel-periods" class="panel-section" data-panel="periods" data-title="Períodos" hidden>
+        <h3 class="visually-hidden">Períodos</h3>
+        <form id="period-form" class="inline-form">
+          <input type="text" id="period-name" placeholder="Nome do período" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input type="search" id="period-search" placeholder="Buscar períodos" aria-label="Buscar períodos" />
+        </div>
+        <div class="list-container">
+          <ul id="period-list" class="entity-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-professors" class="panel-section" data-panel="professors" data-title="Professores" hidden>
+        <h3 class="visually-hidden">Professores</h3>
+        <form id="professor-form" class="inline-form">
+          <input type="text" id="professor-name" placeholder="Nome do professor" required />
+          <select id="professor-discipline">
+            <option value="">Disciplina (opcional)</option>
+          </select>
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input type="search" id="professor-search" placeholder="Buscar professores" aria-label="Buscar professores" />
+        </div>
+        <div class="list-container">
+          <ul id="professor-list" class="entity-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-rooms" class="panel-section" data-panel="rooms" data-title="Salas" hidden>
+        <h3 class="visually-hidden">Salas</h3>
+        <form id="room-form" class="inline-form">
+          <input type="text" id="room-name" placeholder="Identificação da sala" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input type="search" id="room-search" placeholder="Buscar salas" aria-label="Buscar salas" />
+        </div>
+        <div class="list-container">
+          <ul id="room-list" class="entity-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-disciplines" class="panel-section" data-panel="disciplines" data-title="Disciplinas" hidden>
+        <h3 class="visually-hidden">Disciplinas</h3>
+        <form id="discipline-form" class="inline-form">
+          <input type="text" id="discipline-name" placeholder="Nome da disciplina" required />
+          <input type="text" id="discipline-code" placeholder="Código (opcional)" />
+          <select id="discipline-period" required>
+            <option value="">Período</option>
+          </select>
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input type="search" id="discipline-search" placeholder="Buscar disciplinas" aria-label="Buscar disciplinas" />
+        </div>
+        <div class="list-container">
+          <ul id="discipline-list" class="entity-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-settings" class="panel-section data-section" data-panel="settings" data-title="Configurações" hidden>
+        <h3 class="visually-hidden">Configurações</h3>
+        <p class="section-helper">Salve o cronograma para continuar a edição depois ou compartilhar com outras pessoas.</p>
+
+        <form id="config-save-form" class="inline-form config-save-form">
+          <input type="text" id="config-name" placeholder="Nome da configuração" aria-label="Nome da configuração" required />
+          <button type="submit">Salvar configuração</button>
+        </form>
+
+        <div class="saved-configs">
+          <div class="saved-configs-header">
+            <h4>Configurações salvas neste navegador</h4>
+            <button type="button" id="refresh-configs" class="secondary-link" aria-label="Atualizar lista de configurações">Atualizar lista</button>
+          </div>
+          <ul id="saved-config-list" class="saved-config-list" aria-live="polite"></ul>
+        </div>
+
+        <div class="data-actions">
+          <button type="button" id="save-browser">Salvar rascunho rápido</button>
+          <button type="button" id="restore-browser">Recarregar rascunho</button>
+          <button type="button" id="export-config">Exportar atual</button>
+          <label class="import-label">
+            <input type="file" id="import-config" accept="application/json" />
+            <span>Importar JSON</span>
+          </label>
+          <button type="button" id="clear-browser" class="danger-outline">Limpar dados atuais</button>
+        </div>
+        <p id="storage-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  </aside>
+
+  <div id="assignment-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
+      <h2>Editar horário</h2>
+      <form id="assignment-form" class="modal-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Dia</label>
+            <input type="text" id="assignment-day" readonly />
+          </div>
+          <div class="form-field">
+            <label>Bloco</label>
+            <input type="text" id="assignment-slot" readonly />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="assignment-discipline">Disciplina</label>
+          <select id="assignment-discipline" required></select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="assignment-period">Período</label>
+            <select id="assignment-period" required></select>
+          </div>
+          <div class="form-field">
+            <label for="assignment-professor">Professor</label>
+            <select id="assignment-professor" required></select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="assignment-room">Sala</label>
+          <select id="assignment-room" required></select>
+        </div>
+
+        <div id="suggestions" class="suggestions"></div>
+
+        <div class="modal-actions">
+          <button type="submit" class="primary">Salvar</button>
+          <button type="button" id="remove-assignment" class="danger">Remover horário</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <template id="cell-template">
+    <button class="slot-cell" type="button"></button>
+  </template>
+
+  <script src="script.js"></script>
+</body>
+</html>
