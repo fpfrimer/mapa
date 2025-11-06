@@ -143,15 +143,29 @@
       <section id="panel-settings" class="panel-section data-section" data-panel="settings" data-title="Configurações" hidden>
         <h3 class="visually-hidden">Configurações</h3>
         <p class="section-helper">Salve o cronograma para continuar a edição depois ou compartilhar com outras pessoas.</p>
+
+        <form id="config-save-form" class="inline-form config-save-form">
+          <input type="text" id="config-name" placeholder="Nome da configuração" aria-label="Nome da configuração" required />
+          <button type="submit">Salvar configuração</button>
+        </form>
+
+        <div class="saved-configs">
+          <div class="saved-configs-header">
+            <h4>Configurações salvas neste navegador</h4>
+            <button type="button" id="refresh-configs" class="secondary-link" aria-label="Atualizar lista de configurações">Atualizar lista</button>
+          </div>
+          <ul id="saved-config-list" class="saved-config-list" aria-live="polite"></ul>
+        </div>
+
         <div class="data-actions">
-          <button type="button" id="save-browser">Salvar no navegador</button>
-          <button type="button" id="restore-browser">Recarregar salvos</button>
-          <button type="button" id="export-config">Exportar JSON</button>
+          <button type="button" id="save-browser">Salvar rascunho rápido</button>
+          <button type="button" id="restore-browser">Recarregar rascunho</button>
+          <button type="button" id="export-config">Exportar atual</button>
           <label class="import-label">
             <input type="file" id="import-config" accept="application/json" />
             <span>Importar JSON</span>
           </label>
-          <button type="button" id="clear-browser" class="danger-outline">Limpar dados</button>
+          <button type="button" id="clear-browser" class="danger-outline">Limpar dados atuais</button>
         </div>
         <p id="storage-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
       </section>

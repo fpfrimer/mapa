@@ -11,9 +11,10 @@ Aplicação front-end simples para construir cronogramas semanais de cursos.
 5. Selecione a visão desejada (por período, professor ou sala) e escolha o item para visualizar.
 6. Clique em um bloco do cronograma para atribuir/editar uma disciplina. Ative a seleção múltipla para marcar vários horários ao mesmo tempo e aplicar a mesma configuração para todos, inclusive substituindo lançamentos existentes quando desejar. As células preenchidas exibem a disciplina com sua cor dedicada e os dias da semana permanecem fixos no topo para facilitar a navegação. Use os botões **Editar seleção** e **Limpar** para confirmar ou desfazer a seleção em lote.
 7. O painel de edição sugere professores e salas livres naquele horário, indicando com destaque os docentes vinculados à disciplina escolhida e também valida conflitos ao salvar seleções múltiplas.
-8. Utilize a seção **Configurações** para salvar os dados no navegador, exportar um arquivo JSON, importar configurações já existentes ou limpar tudo e começar novamente.
+8. Utilize a seção **Configurações** para nomear o planejamento atual e clicar em **Salvar configuração**. A lista abaixo mostra todas as configurações guardadas neste navegador e permite carregá-las, exportá-las ou removê-las diretamente pelo painel (use **Atualizar lista** para sincronizar caso precise abrir a página em mais de uma aba).
+9. Ainda nas configurações, mantenha um rascunho rápido com os botões de salvar/recarregar, exporte um JSON da versão atual ou importe arquivos salvos anteriormente — o conteúdo importado é carregado imediatamente e gravado na lista local com o nome informado (ou com o carimbo de data e hora da importação).
 
-As informações são preservadas automaticamente no armazenamento local do navegador e podem ser exportadas/importadas pela própria interface.
+As informações continuam sendo preservadas automaticamente no armazenamento local do navegador. Além disso, cada configuração salva recebe uma cópia independente no próprio dispositivo, podendo ser exportada/importada pela interface sempre que necessário.
 
 ### Persistência de dados
 
