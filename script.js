@@ -275,8 +275,7 @@ function getProfessorDetailParts(professor) {
 
 function formatProfessorOptionLabel(professor) {
   if (!professor) return '';
-  const details = getProfessorDetailParts(professor);
-  return details.length ? `${professor.name} — ${details.join(' • ')}` : professor.name;
+  return professor.name || '';
 }
 
 const days = [
@@ -495,6 +494,334 @@ function matchesSearchQuery(item, type, query) {
     }
   }
   return false;
+}
+
+const searchableDropdowns = new Map();
+
+class SearchableDropdown {
+  constructor(select, container, config = {}) {
+    this.select = select;
+    this.container = container;
+    this.input = container?.querySelector('.searchable-input') || null;
+    this.toggle = container?.querySelector('.searchable-toggle') || null;
+    this.list = container?.querySelector('.searchable-options') || null;
+    this.options = [];
+    this.filteredOptions = [];
+    this.highlightedIndex = -1;
+    this.searchTerm = '';
+    this.placeholder = config.placeholder || '';
+
+    this.handleDocumentClick = this.handleDocumentClick.bind(this);
+    this.handleInputFocus = this.handleInputFocus.bind(this);
+    this.handleInputBlur = this.handleInputBlur.bind(this);
+    this.handleInput = this.handleInput.bind(this);
+    this.handleKeydown = this.handleKeydown.bind(this);
+    this.handleToggle = this.handleToggle.bind(this);
+
+    if (this.select) {
+      this.select.classList.add('searchable-native');
+      this.select.setAttribute('tabindex', '-1');
+      this.select.setAttribute('aria-hidden', 'true');
+    }
+
+    if (this.input) {
+      if (this.placeholder && !this.input.placeholder) {
+        this.input.placeholder = this.placeholder;
+      }
+      this.input.setAttribute('role', 'combobox');
+      this.input.setAttribute('aria-autocomplete', 'list');
+      this.input.setAttribute('aria-expanded', 'false');
+    }
+
+    if (this.toggle) {
+      this.toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    if (this.list && this.input) {
+      if (!this.list.id) {
+        this.list.id = `${this.select.id}-listbox`;
+      }
+      this.list.setAttribute('role', this.list.getAttribute('role') || 'listbox');
+      this.input.setAttribute('aria-controls', this.list.id);
+    }
+
+    this.attachEvents();
+    this.syncOptions();
+  }
+
+  attachEvents() {
+    if (this.input) {
+      this.input.addEventListener('focus', this.handleInputFocus);
+      this.input.addEventListener('blur', this.handleInputBlur);
+      this.input.addEventListener('input', this.handleInput);
+      this.input.addEventListener('keydown', this.handleKeydown);
+    }
+    if (this.toggle) {
+      this.toggle.addEventListener('click', this.handleToggle);
+    }
+  }
+
+  isOpen() {
+    return this.container?.classList.contains('open');
+  }
+
+  handleToggle(event) {
+    event.preventDefault();
+    if (!this.input) return;
+    if (this.isOpen()) {
+      this.close();
+    } else {
+      this.open();
+      this.input.focus();
+    }
+  }
+
+  handleInputFocus() {
+    this.open();
+    if (this.input && typeof this.input.select === 'function') {
+      requestAnimationFrame(() => {
+        this.input.select();
+      });
+    }
+  }
+
+  handleInputBlur() {
+    setTimeout(() => {
+      this.close();
+    }, 100);
+  }
+
+  handleInput(event) {
+    this.filterOptions(event.target.value || '');
+  }
+
+  handleKeydown(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!this.isOpen()) this.open();
+      this.moveHighlight(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!this.isOpen()) this.open();
+      this.moveHighlight(-1);
+    } else if (event.key === 'Enter') {
+      if (this.isOpen() && this.highlightedIndex >= 0) {
+        event.preventDefault();
+        const option = this.filteredOptions[this.highlightedIndex];
+        if (option && !option.disabled) {
+          this.selectValue(option.value);
+        }
+      }
+    } else if (event.key === 'Escape') {
+      if (this.isOpen()) {
+        event.preventDefault();
+        this.close();
+        this.input?.blur();
+      }
+    }
+  }
+
+  handleDocumentClick(event) {
+    if (!this.container?.contains(event.target)) {
+      this.close();
+    }
+  }
+
+  open() {
+    if (!this.container || this.isOpen()) return;
+    this.container.classList.add('open');
+    this.toggle?.setAttribute('aria-expanded', 'true');
+    this.input?.setAttribute('aria-expanded', 'true');
+    document.addEventListener('mousedown', this.handleDocumentClick);
+    this.filterOptions(this.input?.value || '');
+  }
+
+  close() {
+    if (!this.container || !this.isOpen()) return;
+    this.container.classList.remove('open');
+    this.toggle?.setAttribute('aria-expanded', 'false');
+    this.input?.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', this.handleDocumentClick);
+    this.searchTerm = '';
+    this.highlightedIndex = -1;
+    this.refreshInputDisplay();
+  }
+
+  syncOptions({ preserveSearch = false } = {}) {
+    if (!this.select) return;
+    const term = preserveSearch ? this.searchTerm : '';
+    this.options = Array.from(this.select.options || []).map((option) => ({
+      value: option.value,
+      label: option.textContent || '',
+      disabled: option.disabled,
+      dataset: { ...option.dataset }
+    }));
+    if (this.isOpen()) {
+      this.filterOptions(term);
+    } else {
+      this.filteredOptions = [...this.options];
+      this.highlightedIndex = -1;
+      if (!preserveSearch) {
+        this.searchTerm = '';
+      }
+    }
+    this.refreshInputDisplay();
+  }
+
+  refreshInputDisplay() {
+    if (!this.input) return;
+    const selected = this.options.find((option) => option.value === this.select?.value);
+    const label = selected ? selected.label : '';
+    this.input.value = label;
+    this.input.setAttribute('data-current-label', label || '');
+  }
+
+  filterOptions(term) {
+    this.searchTerm = term || '';
+    const normalized = normalizeText(this.searchTerm);
+    this.filteredOptions = this.options.filter((option) => {
+      if (!normalized) return true;
+      return normalizeText(option.label).includes(normalized);
+    });
+    if (this.filteredOptions.length) {
+      const selectedIndex = this.filteredOptions.findIndex(
+        (option) => option.value === this.select?.value && !option.disabled
+      );
+      if (selectedIndex !== -1) {
+        this.highlightedIndex = selectedIndex;
+      } else {
+        this.highlightedIndex = this.filteredOptions.findIndex((option) => !option.disabled);
+      }
+    } else {
+      this.highlightedIndex = -1;
+    }
+    this.renderOptions();
+  }
+
+  renderOptions() {
+    if (!this.list) return;
+    this.list.innerHTML = '';
+    if (!this.filteredOptions.length) {
+      const empty = document.createElement('li');
+      empty.className = 'searchable-empty';
+      empty.textContent = 'Nenhum resultado';
+      this.list.appendChild(empty);
+      return;
+    }
+    this.filteredOptions.forEach((option, index) => {
+      const item = document.createElement('li');
+      item.className = 'searchable-option';
+      if (option.value === '') item.classList.add('is-placeholder');
+      if (option.dataset?.available === 'true') item.classList.add('is-available');
+      if (option.dataset?.group === 'linked') item.classList.add('is-linked');
+      if (option.disabled) item.classList.add('is-disabled');
+      if (option.value === this.select?.value) item.classList.add('is-selected');
+      if (index === this.highlightedIndex) item.classList.add('is-highlighted');
+      item.setAttribute('role', 'option');
+      item.dataset.value = option.value;
+      item.textContent = option.label || 'Selecione';
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        if (option.disabled) return;
+        this.selectValue(option.value);
+      });
+      this.list.appendChild(item);
+    });
+    this.scrollToHighlighted();
+  }
+
+  scrollToHighlighted() {
+    if (!this.list) return;
+    const items = Array.from(this.list.querySelectorAll('.searchable-option'));
+    if (!items.length || this.highlightedIndex < 0 || this.highlightedIndex >= items.length) return;
+    const target = items[this.highlightedIndex];
+    if (target?.scrollIntoView) {
+      target.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  moveHighlight(step) {
+    if (!this.filteredOptions.length) return;
+    let index = this.highlightedIndex;
+    const total = this.filteredOptions.length;
+    for (let i = 0; i < total; i += 1) {
+      index = (index + step + total) % total;
+      const option = this.filteredOptions[index];
+      if (option && !option.disabled) {
+        this.highlightedIndex = index;
+        this.updateHighlightClasses();
+        break;
+      }
+    }
+  }
+
+  updateHighlightClasses() {
+    if (!this.list) return;
+    const items = Array.from(this.list.querySelectorAll('.searchable-option'));
+    items.forEach((item, idx) => {
+      if (idx === this.highlightedIndex) {
+        item.classList.add('is-highlighted');
+        if (item.scrollIntoView) {
+          item.scrollIntoView({ block: 'nearest' });
+        }
+      } else {
+        item.classList.remove('is-highlighted');
+      }
+    });
+  }
+
+  selectValue(value) {
+    if (!this.select) return;
+    const previous = this.select.value;
+    this.select.value = value || '';
+    this.refreshInputDisplay();
+    if (previous !== value) {
+      this.select.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      this.select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    this.close();
+  }
+
+  updateFromSelect() {
+    this.refreshInputDisplay();
+    if (this.isOpen()) {
+      this.filterOptions(this.searchTerm);
+    }
+  }
+
+  setValue(value) {
+    if (!this.select) return;
+    this.select.value = value || '';
+    this.updateFromSelect();
+  }
+}
+
+function registerSearchableDropdown(selectId, config = {}) {
+  const select = document.getElementById(selectId);
+  const container = document.querySelector(`.searchable-select[data-select="${selectId}"]`);
+  if (!select || !container) return null;
+  const dropdown = new SearchableDropdown(select, container, config);
+  searchableDropdowns.set(selectId, dropdown);
+  return dropdown;
+}
+
+function syncSearchableDropdownOptions(selectElement) {
+  if (!selectElement) return;
+  const dropdown = searchableDropdowns.get(selectElement.id);
+  if (dropdown) {
+    dropdown.syncOptions({ preserveSearch: dropdown.isOpen() });
+  }
+}
+
+function updateSearchableDropdownValue(selectElement, value) {
+  if (!selectElement) return;
+  const dropdown = searchableDropdowns.get(selectElement.id);
+  if (dropdown) {
+    dropdown.setValue(value || '');
+  } else {
+    selectElement.value = value || '';
+  }
 }
 
 function normalizeCode(value) {
@@ -2362,52 +2689,53 @@ function openAssignmentModalForSlots(slotsInput) {
     }
   });
 
-  elements.assignmentDiscipline.value = disciplineValues.size === 1 ? [...disciplineValues][0] : '';
+  const initialDiscipline = disciplineValues.size === 1 ? [...disciplineValues][0] : '';
+  updateSearchableDropdownValue(elements.assignmentDiscipline, initialDiscipline);
 
+  let initialPeriod = '';
   if (state.view === 'period') {
-    elements.assignmentPeriod.value = state.selectedEntity;
+    initialPeriod = state.selectedEntity;
   } else if (periodValues.size === 1) {
-    elements.assignmentPeriod.value = [...periodValues][0];
-  } else {
-    elements.assignmentPeriod.value = '';
+    initialPeriod = [...periodValues][0];
   }
+  updateSearchableDropdownValue(elements.assignmentPeriod, initialPeriod);
 
+  let initialProfessor = '';
   if (state.view === 'professor') {
-    elements.assignmentProfessor.value = state.selectedEntity;
+    initialProfessor = state.selectedEntity;
   } else if (professorValues.size === 1) {
-    elements.assignmentProfessor.value = [...professorValues][0];
-  } else {
-    elements.assignmentProfessor.value = '';
+    initialProfessor = [...professorValues][0];
   }
+  updateSearchableDropdownValue(elements.assignmentProfessor, initialProfessor);
 
+  let initialRoom = '';
   if (state.view === 'room') {
-    elements.assignmentRoom.value = state.selectedEntity;
+    initialRoom = state.selectedEntity;
   } else if (roomValues.size === 1) {
-    elements.assignmentRoom.value = [...roomValues][0];
-  } else {
-    elements.assignmentRoom.value = '';
+    initialRoom = [...roomValues][0];
   }
+  updateSearchableDropdownValue(elements.assignmentRoom, initialRoom);
 
   prioritizeAssignmentProfessors();
   prioritizeAssignmentDisciplines();
 
   if (state.view === 'period') {
     elements.assignmentPeriod.disabled = true;
-    elements.assignmentPeriod.value = state.selectedEntity;
+    updateSearchableDropdownValue(elements.assignmentPeriod, state.selectedEntity);
   } else {
     elements.assignmentPeriod.disabled = false;
   }
 
   if (state.view === 'professor') {
     elements.assignmentProfessor.disabled = true;
-    elements.assignmentProfessor.value = state.selectedEntity;
+    updateSearchableDropdownValue(elements.assignmentProfessor, state.selectedEntity);
   } else {
     elements.assignmentProfessor.disabled = false;
   }
 
   if (state.view === 'room') {
     elements.assignmentRoom.disabled = true;
-    elements.assignmentRoom.value = state.selectedEntity;
+    updateSearchableDropdownValue(elements.assignmentRoom, state.selectedEntity);
   } else {
     elements.assignmentRoom.disabled = false;
   }
@@ -2452,7 +2780,7 @@ if (elements.suggestions) {
     if (roomTarget) {
       const { suggestionRoom } = roomTarget.dataset;
       if (suggestionRoom) {
-        elements.assignmentRoom.value = suggestionRoom;
+        updateSearchableDropdownValue(elements.assignmentRoom, suggestionRoom);
         elements.assignmentRoom.dispatchEvent(new Event('change', { bubbles: true }));
       }
       return;
@@ -2684,7 +3012,7 @@ function updateSuggestions() {
       ? `${formatDisciplineLabel(disciplineInfo)} vinculada ao período ${period.name}.`
       : '';
     if (!periodId) {
-      elements.assignmentPeriod.value = disciplineInfo.periodId;
+      updateSearchableDropdownValue(elements.assignmentPeriod, disciplineInfo.periodId);
     }
     if (periodId && periodId !== disciplineInfo.periodId) {
       const selectedPeriod = getPeriodById(periodId);
@@ -2845,7 +3173,9 @@ function fillAssignmentDisciplineOptions(professorId) {
     elements.assignmentDiscipline.appendChild(option);
   });
   const stillExists = options.some((option) => option.id === currentValue);
-  elements.assignmentDiscipline.value = stillExists ? currentValue : '';
+  const nextValue = stillExists ? currentValue : '';
+  syncSearchableDropdownOptions(elements.assignmentDiscipline);
+  updateSearchableDropdownValue(elements.assignmentDiscipline, nextValue);
 }
 
 function fillAssignmentProfessorOptions(disciplineId, options = {}) {
@@ -2868,9 +3198,12 @@ function fillAssignmentProfessorOptions(disciplineId, options = {}) {
 
   if (desiredValue) {
     const exists = professorOptions.some((option) => option.id === desiredValue);
-    elements.assignmentProfessor.value = exists ? desiredValue : '';
+    const nextValue = exists ? desiredValue : '';
+    syncSearchableDropdownOptions(elements.assignmentProfessor);
+    updateSearchableDropdownValue(elements.assignmentProfessor, nextValue);
   } else {
-    elements.assignmentProfessor.value = '';
+    syncSearchableDropdownOptions(elements.assignmentProfessor);
+    updateSearchableDropdownValue(elements.assignmentProfessor, '');
   }
 }
 
@@ -2905,11 +3238,9 @@ function fillAssignmentRoomOptions(options = {}) {
     elements.assignmentRoom.appendChild(option);
   });
 
-  if (currentValue && rooms.some((room) => room.id === currentValue)) {
-    elements.assignmentRoom.value = currentValue;
-  } else {
-    elements.assignmentRoom.value = '';
-  }
+  const nextValue = currentValue && rooms.some((room) => room.id === currentValue) ? currentValue : '';
+  syncSearchableDropdownOptions(elements.assignmentRoom);
+  updateSearchableDropdownValue(elements.assignmentRoom, nextValue);
 }
 
 function populateModalSelects() {
@@ -2926,6 +3257,8 @@ function populateModalSelects() {
 
   fillAssignmentProfessorOptions('', { preserveValue: false });
   fillAssignmentRoomOptions({ preserveValue: false });
+  syncSearchableDropdownOptions(elements.assignmentPeriod);
+  updateSearchableDropdownValue(elements.assignmentPeriod, '');
 }
 
 function prioritizeAssignmentDisciplines() {
@@ -2946,10 +3279,8 @@ function updatePeriodByDiscipline() {
   const discipline = getDisciplineById(disciplineId);
   if (!discipline) return;
   const periodId = discipline.periodId;
-  elements.assignmentPeriod.value = periodId;
-  if (state.view === 'period') {
-    elements.assignmentPeriod.value = state.selectedEntity;
-  }
+  const forcedPeriod = state.view === 'period' ? state.selectedEntity : periodId;
+  updateSearchableDropdownValue(elements.assignmentPeriod, forcedPeriod);
 }
 
 function setStorageFeedback(message, variant = 'info') {
@@ -3723,6 +4054,13 @@ function resetSearchFilters() {
   if (elements.disciplineSearch) elements.disciplineSearch.value = '';
 }
 
+function setupSearchableDropdowns() {
+  registerSearchableDropdown('assignment-discipline', { placeholder: 'Buscar disciplina' });
+  registerSearchableDropdown('assignment-period', { placeholder: 'Buscar período' });
+  registerSearchableDropdown('assignment-professor', { placeholder: 'Buscar professor' });
+  registerSearchableDropdown('assignment-room', { placeholder: 'Buscar sala' });
+}
+
 function bindForms() {
   if (elements.periodForm) {
     elements.periodForm.addEventListener('submit', (event) => {
@@ -3874,6 +4212,7 @@ elements.entitySelector.addEventListener('change', (event) => {
 async function init() {
   await loadSavedConfigurationsFromServer();
   setupProfessorFormControls();
+  setupSearchableDropdowns();
   bindForms();
   bindStorageControls();
   bindManagementPanel();

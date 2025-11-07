@@ -230,24 +230,84 @@
         </div>
 
         <div class="form-field">
-          <label for="assignment-discipline">Disciplina</label>
-          <select id="assignment-discipline" required></select>
+          <label for="assignment-discipline-search">Disciplina</label>
+          <div class="searchable-select" data-select="assignment-discipline">
+            <div class="searchable-input-wrapper">
+              <input
+                type="search"
+                id="assignment-discipline-search"
+                class="searchable-input"
+                placeholder="Buscar disciplina"
+                autocomplete="off"
+              />
+              <button type="button" class="searchable-toggle" aria-label="Exibir disciplinas">
+                <span aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <ul class="searchable-options" role="listbox"></ul>
+          </div>
+          <select id="assignment-discipline" required class="searchable-native"></select>
         </div>
 
         <div class="form-row">
           <div class="form-field">
-            <label for="assignment-period">Período</label>
-            <select id="assignment-period" required></select>
+            <label for="assignment-period-search">Período</label>
+            <div class="searchable-select" data-select="assignment-period">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="assignment-period-search"
+                  class="searchable-input"
+                  placeholder="Buscar período"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir períodos">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
+            </div>
+            <select id="assignment-period" required class="searchable-native"></select>
           </div>
           <div class="form-field">
-            <label for="assignment-professor">Professor</label>
-            <select id="assignment-professor" required></select>
+            <label for="assignment-professor-search">Professor</label>
+            <div class="searchable-select" data-select="assignment-professor">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="assignment-professor-search"
+                  class="searchable-input"
+                  placeholder="Buscar professor"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir professores">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
+            </div>
+            <select id="assignment-professor" required class="searchable-native"></select>
           </div>
         </div>
 
         <div class="form-field">
-          <label for="assignment-room">Sala</label>
-          <select id="assignment-room" required></select>
+          <label for="assignment-room-search">Sala</label>
+          <div class="searchable-select" data-select="assignment-room">
+            <div class="searchable-input-wrapper">
+              <input
+                type="search"
+                id="assignment-room-search"
+                class="searchable-input"
+                placeholder="Buscar sala"
+                autocomplete="off"
+              />
+              <button type="button" class="searchable-toggle" aria-label="Exibir salas">
+                <span aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <ul class="searchable-options" role="listbox"></ul>
+          </div>
+          <select id="assignment-room" required class="searchable-native"></select>
         </div>
 
         <div id="suggestions" class="suggestions"></div>
