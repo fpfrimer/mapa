@@ -12,71 +12,71 @@
   </header>
 
   <main>
-    <nav class="entity-menu" aria-label="Gerenciar cadastros">
-      <button type="button" class="menu-button" data-panel="periods" aria-controls="panel-periods" aria-expanded="false">
-        <span class="icon" aria-hidden="true">🗓️</span>
-        <span class="label">Períodos</span>
-      </button>
-      <button type="button" class="menu-button" data-panel="professors" aria-controls="panel-professors" aria-expanded="false">
-        <span class="icon" aria-hidden="true">👩‍🏫</span>
-        <span class="label">Professores</span>
-      </button>
-      <button type="button" class="menu-button" data-panel="rooms" aria-controls="panel-rooms" aria-expanded="false">
-        <span class="icon" aria-hidden="true">🏫</span>
-        <span class="label">Salas</span>
-      </button>
-      <button type="button" class="menu-button" data-panel="disciplines" aria-controls="panel-disciplines" aria-expanded="false">
-        <span class="icon" aria-hidden="true">📚</span>
-        <span class="label">Disciplinas</span>
-      </button>
-      <button type="button" class="menu-button" data-panel="settings" aria-controls="panel-settings" aria-expanded="false">
-        <span class="icon" aria-hidden="true">⚙️</span>
-        <span class="label">Configurações</span>
-      </button>
-    </nav>
+    <div class="sidebar-column">
+      <nav class="entity-menu" aria-label="Gerenciar cadastros">
+        <button type="button" class="menu-button" data-panel="periods" aria-controls="panel-periods" aria-expanded="false">
+          <span class="icon" aria-hidden="true">🗓️</span>
+          <span class="label">Períodos</span>
+        </button>
+        <button type="button" class="menu-button" data-panel="professors" aria-controls="panel-professors" aria-expanded="false">
+          <span class="icon" aria-hidden="true">👩‍🏫</span>
+          <span class="label">Professores</span>
+        </button>
+        <button type="button" class="menu-button" data-panel="rooms" aria-controls="panel-rooms" aria-expanded="false">
+          <span class="icon" aria-hidden="true">🏫</span>
+          <span class="label">Salas</span>
+        </button>
+        <button type="button" class="menu-button" data-panel="disciplines" aria-controls="panel-disciplines" aria-expanded="false">
+          <span class="icon" aria-hidden="true">📚</span>
+          <span class="label">Disciplinas</span>
+        </button>
+        <button type="button" class="menu-button" data-panel="settings" aria-controls="panel-settings" aria-expanded="false">
+          <span class="icon" aria-hidden="true">⚙️</span>
+          <span class="label">Configurações</span>
+        </button>
+      </nav>
+
+      <div class="control-sidebar" aria-label="Controles da grade de horários">
+        <div class="view-controls">
+          <div class="control-group">
+            <label for="view-type">Visualizar por:</label>
+            <select id="view-type">
+              <option value="period">Período</option>
+              <option value="professor">Professor</option>
+              <option value="room">Sala</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label for="entity-selector">Selecionar:</label>
+            <select id="entity-selector">
+              <option value="">Escolha um item</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="selection-tools" aria-live="polite">
+          <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
+            Ativar seleção múltipla
+          </button>
+          <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
+          <div class="selection-actions">
+            <button type="button" id="edit-selection" disabled>Editar seleção</button>
+            <button type="button" id="clear-selection" disabled>Limpar</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <section class="schedule-panel">
       <div class="view-panel" aria-label="Resumo da visualização">
         <div id="view-summary" class="view-summary" aria-live="polite"></div>
       </div>
 
-      <div class="schedule-layout">
-        <div class="control-sidebar" aria-label="Controles da grade de horários">
-          <div class="view-controls">
-            <div class="control-group">
-              <label for="view-type">Visualizar por:</label>
-              <select id="view-type">
-                <option value="period">Período</option>
-                <option value="professor">Professor</option>
-                <option value="room">Sala</option>
-              </select>
-            </div>
-
-            <div class="control-group">
-              <label for="entity-selector">Selecionar:</label>
-              <select id="entity-selector">
-                <option value="">Escolha um item</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="selection-tools" aria-live="polite">
-            <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
-              Ativar seleção múltipla
-            </button>
-            <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
-            <div class="selection-actions">
-              <button type="button" id="edit-selection" disabled>Editar seleção</button>
-              <button type="button" id="clear-selection" disabled>Limpar</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="schedule-wrapper">
-          <h2 id="schedule-title" class="schedule-title" aria-live="polite">Selecione um item para visualizar o cronograma</h2>
-          <div id="schedule-container" class="schedule-container">
-            <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
-          </div>
+      <div class="schedule-wrapper">
+        <h2 id="schedule-title" class="schedule-title" aria-live="polite">Selecione um item para visualizar o cronograma</h2>
+        <div id="schedule-container" class="schedule-container">
+          <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
         </div>
       </div>
     </section>
