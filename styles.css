@@ -214,7 +214,7 @@ main {
   margin-bottom: 0.75rem;
 }
 
-.inline-form input,
+.inline-form input:not([type='color']),
 .inline-form select {
   flex: 1 1 160px;
   padding: 0.5rem 0.75rem;
@@ -222,6 +222,49 @@ main {
   border: 1px solid var(--border);
   font-size: 0.95rem;
   min-width: 0;
+}
+
+.inline-form input[type='color'] {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.inline-form input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 8px;
+}
+
+.inline-form input[type='color']::-webkit-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.inline-form input[type='color']::-moz-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.color-picker-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.color-picker-field span {
+  white-space: nowrap;
 }
 
 .inline-form button {
@@ -455,13 +498,43 @@ main {
   align-items: center;
 }
 
-.entity-edit-form input,
+.entity-edit-form input:not([type='color']),
 .entity-edit-form select {
   flex: 1 1 140px;
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   font-size: 0.9rem;
+}
+
+.entity-edit-form input[type='color'] {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.entity-edit-form input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 8px;
+}
+
+.entity-edit-form input[type='color']::-webkit-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.entity-edit-form input[type='color']::-moz-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.entity-edit-form .color-picker-field {
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
 }
 
 .entity-edit-actions {
@@ -508,8 +581,10 @@ button.primary:hover {
 
 .schedule-layout {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .schedule-wrapper {
@@ -529,18 +604,6 @@ button.primary:hover {
 .schedule-title.is-muted {
   color: var(--muted);
   font-weight: 500;
-}
-
-@media (min-width: 1100px) {
-  .schedule-layout {
-    flex-direction: row;
-    align-items: stretch;
-  }
-
-  .control-sidebar {
-    flex: 0 0 clamp(260px, 24vw, 320px);
-    width: clamp(260px, 24vw, 320px);
-  }
 }
 
 .view-panel {
@@ -563,8 +626,19 @@ button.primary:hover {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  flex: 0 0 auto;
-  width: 100%;
+  flex: 0 0 clamp(260px, 26vw, 320px);
+  width: clamp(260px, 26vw, 320px);
+}
+
+@media (max-width: 900px) {
+  .schedule-layout {
+    flex-direction: column;
+  }
+
+  .control-sidebar {
+    width: 100%;
+    flex: 1 1 auto;
+  }
 }
 
 .view-controls {

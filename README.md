@@ -6,7 +6,7 @@ Aplicação front-end simples para construir cronogramas semanais de cursos.
 
 1. Acesse `http://localhost:3000` (após iniciar o servidor) em um navegador moderno (Chrome, Edge, Firefox).
 2. Utilize o menu de ícones para abrir o painel de cadastros de períodos, professores, salas, disciplinas ou configurações. Cada painel permite adicionar, buscar, editar e remover itens conforme necessário.
-3. Ao cadastrar disciplinas é possível informar um código opcional, que é validado para evitar duplicidade. Cada disciplina recebe automaticamente uma cor que é reaproveitada nas células do cronograma para facilitar a identificação visual.
+3. Ao cadastrar disciplinas é possível informar um código opcional, que é validado para evitar duplicidade. A aplicação sugere automaticamente uma cor distinta para cada disciplina dentro do período selecionado, mas você pode ajustá-la pelo seletor exibido no formulário (a escolha é mantida nas listas, no mapa e nos dados exportados).
 4. Defina também, se desejar, a quantidade prevista de horários para cada disciplina. A lista de disciplinas destaca cargas pendentes ou excedentes e as células excedentes do mapa recebem um alerta visual.
 5. No cadastro de professores você pode, opcionalmente, vincular um docente a várias disciplinas utilizando o seletor com os botões **+** e **−**, além de marcar se ele pertence à área específica do curso. Essas informações alimentam as sugestões exibidas no modal de atribuição, mas continuam totalmente opcionais para manter flexibilidade.
 6. Use a barra lateral de visualização para escolher a visão (por período, professor ou sala) e o item desejado. O painel de resumo acima da grade apresenta dados da seleção atual:

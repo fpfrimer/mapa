@@ -45,8 +45,25 @@ const disciplineColorPalette = [
   '#00f5d4'
 ];
 
+const DEFAULT_DISCIPLINE_COLOR = disciplineColorPalette[0] || '#2962ff';
+
 function normalizeColorValue(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeHexColor(value) {
+  const normalized = normalizeColorValue(value);
+  if (!normalized) return '';
+  const hexMatch = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(normalized);
+  if (!hexMatch) return '';
+  if (hexMatch[1].length === 3) {
+    const expanded = hexMatch[1]
+      .split('')
+      .map((char) => `${char}${char}`)
+      .join('');
+    return `#${expanded.toLowerCase()}`;
+  }
+  return `#${hexMatch[1].toLowerCase()}`;
 }
 
 function pickDisciplineColor(usedColors = new Set()) {
@@ -60,33 +77,60 @@ function pickDisciplineColor(usedColors = new Set()) {
   return disciplineColorPalette[index];
 }
 
+function getUsedDisciplineColors(periodId, ignoreDiscipline = null) {
+  const normalizedPeriod = typeof periodId === 'string' ? periodId : '';
+  const used = new Set();
+  state.disciplines.forEach((item) => {
+    if (!item || item === ignoreDiscipline) return;
+    if ((item.periodId || '') !== normalizedPeriod) return;
+    const color = normalizeHexColor(item.color);
+    if (color) {
+      used.add(color);
+    }
+  });
+  return used;
+}
+
 function assignColorToDiscipline(discipline) {
-  if (!discipline || normalizeColorValue(discipline.color)) return;
-  const usedColors = new Set(
-    state.disciplines
-      .filter((item) => item && item !== discipline && normalizeColorValue(item.color))
-      .map((item) => normalizeColorValue(item.color))
-  );
-  const color = pickDisciplineColor(usedColors);
+  if (!discipline) return;
+  const normalized = normalizeHexColor(discipline.color);
+  if (normalized) {
+    discipline.color = normalized;
+    return;
+  }
+  const usedColors = getUsedDisciplineColors(discipline?.periodId || '', discipline);
+  const color = pickDisciplineColor(usedColors) || DEFAULT_DISCIPLINE_COLOR;
   if (color) {
     discipline.color = color;
   }
 }
 
 function ensureDisciplineColors() {
-  const used = new Set();
-  state.disciplines.forEach((discipline) => {
-    const value = normalizeColorValue(discipline?.color);
-    if (value) {
-      discipline.color = value;
-      used.add(value);
-    }
-  });
+  const usageMap = new Map();
   state.disciplines.forEach((discipline) => {
     if (!discipline) return;
-    const value = normalizeColorValue(discipline.color);
-    if (value) return;
-    const color = pickDisciplineColor(used);
+    const periodId = typeof discipline.periodId === 'string' ? discipline.periodId : '';
+    if (!usageMap.has(periodId)) {
+      usageMap.set(periodId, new Set());
+    }
+    const used = usageMap.get(periodId);
+    const normalized = normalizeHexColor(discipline.color);
+    if (normalized) {
+      discipline.color = normalized;
+      used.add(normalized);
+    }
+  });
+
+  state.disciplines.forEach((discipline) => {
+    if (!discipline) return;
+    const periodId = typeof discipline.periodId === 'string' ? discipline.periodId : '';
+    if (!usageMap.has(periodId)) {
+      usageMap.set(periodId, new Set());
+    }
+    const used = usageMap.get(periodId);
+    const normalized = normalizeHexColor(discipline.color);
+    if (normalized) return;
+    const color = pickDisciplineColor(used) || DEFAULT_DISCIPLINE_COLOR;
     if (color) {
       discipline.color = color;
       used.add(color);
@@ -95,17 +139,9 @@ function ensureDisciplineColors() {
 }
 
 function colorWithAlpha(color, alpha = 0.18) {
-  const value = normalizeColorValue(color);
-  if (!value) return '';
-  if (!value.startsWith('#')) return '';
-  let hex = value.slice(1);
-  if (hex.length === 3) {
-    hex = hex
-      .split('')
-      .map((char) => char + char)
-      .join('');
-  }
-  if (hex.length !== 6) return '';
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return '';
+  const hex = normalized.slice(1);
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
@@ -113,6 +149,59 @@ function colorWithAlpha(color, alpha = 0.18) {
     return '';
   }
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function suggestDisciplineColor(periodId, ignoreDiscipline = null) {
+  const used = getUsedDisciplineColors(periodId, ignoreDiscipline);
+  return pickDisciplineColor(used) || DEFAULT_DISCIPLINE_COLOR;
+}
+
+function resetDisciplineColorInput() {
+  const colorInput = elements?.disciplineColorInput;
+  if (!colorInput) return;
+  colorInput.dataset.userSelected = '';
+  colorInput.dataset.suggestedColor = '';
+  const fallback = normalizeHexColor(DEFAULT_DISCIPLINE_COLOR) || '#2962ff';
+  if (fallback) {
+    colorInput.value = fallback;
+  }
+}
+
+function updateDisciplineColorSuggestion(options = {}) {
+  const { force = false } = options;
+  const colorInput = elements?.disciplineColorInput;
+  const periodSelect = elements?.disciplinePeriodSelect;
+  if (!colorInput || !periodSelect) return;
+  if (force) {
+    colorInput.dataset.userSelected = '';
+  }
+  const userSet = colorInput.dataset.userSelected === 'true';
+  const periodId = periodSelect.value;
+  const current = normalizeHexColor(colorInput.value);
+  if (!periodId) {
+    if (force || !userSet || !current) {
+      const fallback = normalizeHexColor(DEFAULT_DISCIPLINE_COLOR) || current || '#2962ff';
+      if (fallback) {
+        colorInput.value = fallback;
+        colorInput.dataset.suggestedColor = fallback;
+      }
+    }
+    return;
+  }
+  if (force || !userSet || !current) {
+    const suggestion = suggestDisciplineColor(periodId);
+    if (suggestion) {
+      colorInput.value = suggestion;
+      colorInput.dataset.suggestedColor = suggestion;
+    }
+    return;
+  }
+  const previousSuggestion = normalizeHexColor(colorInput.dataset.suggestedColor || '');
+  const nextSuggestion = suggestDisciplineColor(periodId);
+  if (previousSuggestion && current === previousSuggestion && nextSuggestion && nextSuggestion !== current) {
+    colorInput.value = nextSuggestion;
+    colorInput.dataset.suggestedColor = nextSuggestion;
+  }
 }
 
 const STORAGE_KEY = 'academic-planner-state-v1';
@@ -318,8 +407,10 @@ const elements = {
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
   disciplineForm: document.getElementById('discipline-form'),
+  disciplineNameInput: document.getElementById('discipline-name'),
   disciplineCodeInput: document.getElementById('discipline-code'),
   disciplineHoursInput: document.getElementById('discipline-hours'),
+  disciplineColorInput: document.getElementById('discipline-color'),
   periodList: document.getElementById('period-list'),
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
@@ -601,6 +692,7 @@ function renderEntityList(list, container, type) {
       let codeInput = null;
       let periodSelect = null;
       let requiredInput = null;
+      let colorInput = null;
       if (type === 'discipline') {
         codeInput = document.createElement('input');
         codeInput.type = 'text';
@@ -632,7 +724,38 @@ function renderEntityList(list, container, type) {
         });
 
         periodSelect.value = item.periodId || '';
+
+        colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.id = `discipline-color-${item.id}`;
+        const existingColor = normalizeHexColor(item.color);
+        const suggestedColor = suggestDisciplineColor(item.periodId, item);
+        const fallbackColor = existingColor || suggestedColor || normalizeHexColor(DEFAULT_DISCIPLINE_COLOR) || '#2962ff';
+        colorInput.value = fallbackColor;
+        colorInput.dataset.suggestedColor = existingColor || suggestedColor || fallbackColor;
+        colorInput.addEventListener('input', () => {
+          colorInput.dataset.userSelected = 'true';
+        });
+
+        const colorField = document.createElement('label');
+        colorField.className = 'color-picker-field';
+        colorField.setAttribute('for', colorInput.id);
+        const colorLabel = document.createElement('span');
+        colorLabel.textContent = 'Cor';
+        colorField.appendChild(colorLabel);
+        colorField.appendChild(colorInput);
+        form.appendChild(colorField);
+
         form.appendChild(periodSelect);
+
+        periodSelect.addEventListener('change', () => {
+          const suggestion = suggestDisciplineColor(periodSelect.value, item);
+          if (suggestion) {
+            colorInput.value = suggestion;
+            colorInput.dataset.suggestedColor = suggestion;
+            colorInput.dataset.userSelected = '';
+          }
+        });
       } else if (type === 'professor') {
         professorDisciplineEditor = createProfessorDisciplineEditor(item.disciplineIds);
         form.appendChild(professorDisciplineEditor.container);
@@ -689,6 +812,7 @@ function renderEntityList(list, container, type) {
             alert('Selecione um período para a disciplina.');
             return;
           }
+          updates.color = normalizeHexColor(colorInput?.value || '');
           updates.periodId = selectedPeriod;
         } else if (type === 'professor') {
           const selectedIds = professorDisciplineEditor
@@ -1066,6 +1190,7 @@ function refreshLists() {
   renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
   updateDisciplinePeriodOptions();
   updateProfessorDisciplineOptions();
+  updateDisciplineColorSuggestion();
 }
 
 function startEntityEditing(type, id) {
@@ -1124,6 +1249,13 @@ function saveEntityEdit(type, id, updates) {
     entity.code = updates.code || '';
     entity.requiredSlots = normalizeRequiredSlots(updates.requiredSlots || 0);
     entity.periodId = newPeriod;
+    const normalizedColor = normalizeHexColor(updates.color || entity.color);
+    if (normalizedColor) {
+      entity.color = normalizedColor;
+    } else {
+      entity.color = '';
+      assignColorToDiscipline(entity);
+    }
     if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
       moveDisciplineAssignments(id, previousPeriod, newPeriod);
     }
@@ -1343,7 +1475,7 @@ function getDisciplineById(id) {
 }
 
 function getDisciplineColor(discipline) {
-  return normalizeColorValue(discipline?.color);
+  return normalizeHexColor(discipline?.color);
 }
 
 function getPeriodById(id) {
@@ -3240,7 +3372,7 @@ function applyStateFromData(data) {
     ? data.disciplines.map((discipline) => ({
         ...discipline,
         code: typeof discipline?.code === 'string' ? discipline.code : '',
-        color: typeof discipline?.color === 'string' ? discipline.color : '',
+        color: normalizeHexColor(discipline?.color),
         requiredSlots: normalizeRequiredSlots(discipline?.requiredSlots)
       }))
     : [];
@@ -3274,6 +3406,8 @@ function applyStateFromData(data) {
   sortAllCollections();
   refreshLists();
   updateEntitySelector();
+  resetDisciplineColorInput();
+  updateDisciplineColorSuggestion({ force: true });
   updateSelectionUI();
 }
 
@@ -3450,6 +3584,8 @@ function clearAllData() {
   resetSearchFilters();
   refreshLists();
   updateEntitySelector();
+  resetDisciplineColorInput();
+  updateDisciplineColorSuggestion({ force: true });
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(COUNTERS_KEY);
   setStorageFeedback('Cronograma atual limpo. As configurações nomeadas continuam disponíveis no servidor.', 'warning');
@@ -3588,108 +3724,137 @@ function resetSearchFilters() {
 }
 
 function bindForms() {
-  elements.periodForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const input = document.getElementById('period-name');
-    const name = input.value.trim();
-    if (!name) return;
-    state.periods.push({ id: generateId('period'), name });
-    input.value = '';
-    refreshLists();
-    updateEntitySelector();
-    persistState();
-  });
-
-  elements.professorForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const input = document.getElementById('professor-name');
-    const name = input.value.trim();
-    if (!name) return;
-    const pendingSelection = elements.professorDisciplineSelect?.value;
-    if (pendingSelection) {
-      const exists = state.disciplines.some((discipline) => discipline.id === pendingSelection);
-      if (exists) {
-        professorFormDisciplineIds.add(pendingSelection);
-        elements.professorDisciplineSelect.value = '';
-        renderProfessorFormDisciplineChips();
-      }
-    }
-    const selectedIds = sanitizeDisciplineIdList(Array.from(professorFormDisciplineIds));
-    const validIds = selectedIds.filter((id) =>
-      state.disciplines.some((discipline) => discipline.id === id)
-    );
-    const areaCheckbox = elements.professorAreaCheckbox;
-    state.professors.push({
-      id: generateId('professor'),
-      name,
-      disciplineIds: validIds,
-      isCourseArea: Boolean(areaCheckbox?.checked)
+  if (elements.periodForm) {
+    elements.periodForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const input = document.getElementById('period-name');
+      const name = input.value.trim();
+      if (!name) return;
+      state.periods.push({ id: generateId('period'), name });
+      input.value = '';
+      refreshLists();
+      updateEntitySelector();
+      persistState();
     });
-    input.value = '';
-    professorFormDisciplineIds.clear();
-    if (elements.professorDisciplineSelect) {
-      elements.professorDisciplineSelect.value = '';
-    }
-    renderProfessorFormDisciplineChips();
-    if (areaCheckbox) {
-      areaCheckbox.checked = false;
-    }
-    refreshLists();
-    updateEntitySelector();
-    persistState();
-  });
+  }
 
-  elements.roomForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const input = document.getElementById('room-name');
-    const name = input.value.trim();
-    if (!name) return;
-    state.rooms.push({ id: generateId('room'), name });
-    input.value = '';
-    refreshLists();
-    updateEntitySelector();
-    persistState();
-  });
+  if (elements.professorForm) {
+    elements.professorForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const input = document.getElementById('professor-name');
+      const name = input.value.trim();
+      if (!name) return;
+      const pendingSelection = elements.professorDisciplineSelect?.value;
+      if (pendingSelection) {
+        const exists = state.disciplines.some((discipline) => discipline.id === pendingSelection);
+        if (exists) {
+          professorFormDisciplineIds.add(pendingSelection);
+          elements.professorDisciplineSelect.value = '';
+          renderProfessorFormDisciplineChips();
+        }
+      }
+      const selectedIds = sanitizeDisciplineIdList(Array.from(professorFormDisciplineIds));
+      const validIds = selectedIds.filter((id) =>
+        state.disciplines.some((discipline) => discipline.id === id)
+      );
+      const areaCheckbox = elements.professorAreaCheckbox;
+      state.professors.push({
+        id: generateId('professor'),
+        name,
+        disciplineIds: validIds,
+        isCourseArea: Boolean(areaCheckbox?.checked)
+      });
+      input.value = '';
+      professorFormDisciplineIds.clear();
+      if (elements.professorDisciplineSelect) {
+        elements.professorDisciplineSelect.value = '';
+      }
+      renderProfessorFormDisciplineChips();
+      if (areaCheckbox) {
+        areaCheckbox.checked = false;
+      }
+      refreshLists();
+      updateEntitySelector();
+      persistState();
+    });
+  }
 
-  elements.disciplineForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const nameInput = document.getElementById('discipline-name');
-    const name = nameInput.value.trim();
-    const period = elements.disciplinePeriodSelect.value;
-    const codeValue = elements.disciplineCodeInput?.value.trim() || '';
-    const hoursValue = elements.disciplineHoursInput?.value || '';
-    if (!name || !period) {
-      alert('Informe o nome e selecione um período.');
-      return;
-    }
-    if (isDuplicateDisciplineName(name)) {
-      alert('Já existe uma disciplina com este nome.');
-      return;
-    }
-    if (codeValue && isDuplicateDisciplineCode(codeValue)) {
-      alert('Já existe uma disciplina com este código.');
-      return;
-    }
-    const discipline = {
-      id: generateId('discipline'),
-      name,
-      periodId: period,
-      code: codeValue,
-      requiredSlots: normalizeRequiredSlots(hoursValue)
-    };
-    assignColorToDiscipline(discipline);
-    state.disciplines.push(discipline);
-    nameInput.value = '';
-    if (elements.disciplineCodeInput) {
-      elements.disciplineCodeInput.value = '';
-    }
-    if (elements.disciplineHoursInput) {
-      elements.disciplineHoursInput.value = '';
-    }
-    elements.disciplinePeriodSelect.value = '';
-    refreshLists();
-    persistState();
-  });
+  if (elements.roomForm) {
+    elements.roomForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const input = document.getElementById('room-name');
+      const name = input.value.trim();
+      if (!name) return;
+      state.rooms.push({ id: generateId('room'), name });
+      input.value = '';
+      refreshLists();
+      updateEntitySelector();
+      persistState();
+    });
+  }
+
+  if (elements.disciplineColorInput) {
+    elements.disciplineColorInput.addEventListener('input', () => {
+      elements.disciplineColorInput.dataset.userSelected = 'true';
+    });
+  }
+
+  if (elements.disciplinePeriodSelect) {
+    elements.disciplinePeriodSelect.addEventListener('change', () => {
+      updateDisciplineColorSuggestion({ force: true });
+    });
+  }
+
+  if (elements.disciplineForm) {
+    elements.disciplineForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const nameInput = elements.disciplineNameInput;
+      if (!nameInput) return;
+      const name = nameInput.value.trim();
+      const period = elements.disciplinePeriodSelect?.value || '';
+      const codeValue = elements.disciplineCodeInput?.value.trim() || '';
+      const hoursValue = elements.disciplineHoursInput?.value || '';
+      const colorValue = normalizeHexColor(elements.disciplineColorInput?.value || '');
+      if (!name || !period) {
+        alert('Informe o nome e selecione um período.');
+        return;
+      }
+      if (isDuplicateDisciplineName(name)) {
+        alert('Já existe uma disciplina com este nome.');
+        return;
+      }
+      if (codeValue && isDuplicateDisciplineCode(codeValue)) {
+        alert('Já existe uma disciplina com este código.');
+        return;
+      }
+      const discipline = {
+        id: generateId('discipline'),
+        name,
+        periodId: period,
+        code: codeValue,
+        requiredSlots: normalizeRequiredSlots(hoursValue),
+        color: colorValue
+      };
+      assignColorToDiscipline(discipline);
+      state.disciplines.push(discipline);
+      nameInput.value = '';
+      if (elements.disciplineCodeInput) {
+        elements.disciplineCodeInput.value = '';
+      }
+      if (elements.disciplineHoursInput) {
+        elements.disciplineHoursInput.value = '';
+      }
+      if (elements.disciplinePeriodSelect) {
+        elements.disciplinePeriodSelect.value = '';
+      }
+      resetDisciplineColorInput();
+      updateDisciplineColorSuggestion({ force: true });
+      refreshLists();
+      persistState();
+    });
+  }
+
+  updateDisciplineColorSuggestion({ force: true });
 }
 
 elements.viewTypeSelect.addEventListener('change', (event) => {
