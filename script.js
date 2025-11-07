@@ -1704,6 +1704,26 @@ function createSummaryPlaceholder(text) {
   return paragraph;
 }
 
+function createSummaryCollapsible(label, content, { startOpen = false } = {}) {
+  const details = document.createElement('details');
+  details.className = 'summary-collapsible';
+  if (startOpen) {
+    details.open = true;
+  }
+
+  const summary = document.createElement('summary');
+  summary.className = 'summary-collapsible-toggle';
+  summary.textContent = label;
+  details.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'summary-collapsible-content';
+  body.appendChild(content);
+  details.appendChild(body);
+
+  return details;
+}
+
 function renderViewSummary() {
   const container = elements.viewSummary;
   if (!container) return;
@@ -1844,7 +1864,11 @@ function buildPeriodSummary(periodId) {
     list.appendChild(item);
   });
 
-  fragment.appendChild(list);
+  const collapsible = createSummaryCollapsible(
+    `Disciplinas deste período (${sorted.length})`,
+    list
+  );
+  fragment.appendChild(collapsible);
   return fragment;
 }
 
@@ -1978,7 +2002,11 @@ function buildProfessorSummary(professorId) {
     list.appendChild(item);
   });
 
-  fragment.appendChild(list);
+  const collapsible = createSummaryCollapsible(
+    `Disciplinas atribuídas (${sorted.length})`,
+    list
+  );
+  fragment.appendChild(collapsible);
   return fragment;
 }
 
@@ -2076,7 +2104,11 @@ function buildRoomSummary(roomId) {
     list.appendChild(item);
   });
 
-  fragment.appendChild(list);
+  const collapsible = createSummaryCollapsible(
+    `Horários reservados (${sorted.length})`,
+    list
+  );
+  fragment.appendChild(collapsible);
   return fragment;
 }
 

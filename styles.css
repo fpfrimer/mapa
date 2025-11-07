@@ -514,6 +514,8 @@ button.primary:hover {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  max-height: clamp(320px, 45vh, 420px);
+  overflow-y: auto;
 }
 
 .view-controls {
@@ -726,6 +728,47 @@ button.primary:hover {
   margin: 0;
   font-size: 0.9rem;
   color: var(--muted);
+}
+
+.summary-collapsible {
+  margin: 0;
+  border: 1px solid rgba(31, 45, 61, 0.12);
+  border-radius: 12px;
+  background: rgba(41, 98, 255, 0.06);
+  overflow: hidden;
+}
+
+.summary-collapsible-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary-dark);
+  list-style: none;
+}
+
+.summary-collapsible-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.summary-collapsible-toggle::after {
+  content: '+';
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.summary-collapsible[open] .summary-collapsible-toggle::after {
+  content: '−';
+  transform: rotate(180deg);
+}
+
+.summary-collapsible-content {
+  padding: 0.75rem 1rem 1rem;
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .summary-meta {
