@@ -614,9 +614,27 @@ button.primary:hover {
   justify-content: space-between;
 }
 
+.slot-cell.has-error {
+  background: rgba(198, 40, 40, 0.08);
+  box-shadow: inset 0 0 0 2px rgba(198, 40, 40, 0.45);
+}
+
+.slot-cell.has-error:hover {
+  background: rgba(198, 40, 40, 0.12);
+}
+
+.slot-cell.has-error .slot-empty {
+  color: var(--danger);
+}
+
 .slot-cell.selected {
   background: rgba(41, 98, 255, 0.14);
   box-shadow: inset 0 0 0 2px rgba(41, 98, 255, 0.3);
+}
+
+.slot-cell.has-error.selected {
+  background: rgba(198, 40, 40, 0.18);
+  box-shadow: inset 0 0 0 2px rgba(198, 40, 40, 0.6);
 }
 
 .slot-cell.selected .slot-empty {
@@ -658,6 +676,16 @@ button.primary:hover {
 
 .slot-content.with-discipline-color .badge {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.slot-error-indicator {
+  margin-top: 0.4rem;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .slot-empty {

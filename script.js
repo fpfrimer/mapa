@@ -400,6 +400,16 @@ function isDuplicateDisciplineCode(code, ignoreId = null) {
   });
 }
 
+function isDuplicateDisciplineName(name, ignoreId = null) {
+  const normalized = normalizeText(name);
+  if (!normalized) return false;
+  return state.disciplines.some((discipline) => {
+    if (!discipline) return false;
+    if (ignoreId && discipline.id === ignoreId) return false;
+    return normalizeText(discipline.name) === normalized;
+  });
+}
+
 function formatDisciplineLabel(discipline) {
   if (!discipline) return '';
   const code = discipline.code ? discipline.code.trim() : '';
@@ -518,6 +528,10 @@ function renderEntityList(list, container, type) {
 
         const updates = { name };
         if (type === 'discipline') {
+          if (isDuplicateDisciplineName(name, item.id)) {
+            alert('Já existe uma disciplina com este nome.');
+            return;
+          }
           const codeValue = codeInput?.value.trim() || '';
           if (codeValue && isDuplicateDisciplineCode(codeValue, item.id)) {
             alert('Já existe uma disciplina com este código.');
@@ -895,11 +909,42 @@ function saveEntityEdit(type, id, updates) {
   const entity = list.find((item) => item.id === id);
   if (!entity) return;
 
+  if (type === 'discipline') {
+    if (isDuplicateDisciplineName(updates.name, id)) {
+      alert('Já existe uma disciplina com este nome.');
+      return;
+    }
+    if (updates.code && isDuplicateDisciplineCode(updates.code, id)) {
+      alert('Já existe uma disciplina com este código.');
+      return;
+    }
+  }
+
   entity.name = updates.name;
 
   if (type === 'discipline') {
     const previousPeriod = entity.periodId;
     const newPeriod = updates.periodId || previousPeriod;
+    if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
+      const conflicts = describeDisciplinePeriodChangeConflicts(id, previousPeriod, newPeriod);
+      if (conflicts.length) {
+        const fromPeriod = getPeriodById(previousPeriod);
+        const fromName = fromPeriod ? fromPeriod.name : previousPeriod;
+        const toPeriod = getPeriodById(newPeriod);
+        const toName = toPeriod ? toPeriod.name : newPeriod;
+        const messageLines = [
+          `Esta disciplina possui ${conflicts.length} horário(s) configurado(s) no período ${fromName}.`,
+          '',
+          conflicts.join('\n'),
+          '',
+          `Alterar o período tentará mover esses horários para ${toName} quando possível.`
+        ];
+        const proceed = confirm(`${messageLines.join('\n')}`);
+        if (!proceed) {
+          return;
+        }
+      }
+    }
     entity.code = updates.code || '';
     entity.periodId = newPeriod;
     if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
@@ -963,6 +1008,37 @@ function moveDisciplineAssignments(disciplineId, fromPeriod, toPeriod) {
   if (!Object.keys(origin).length) {
     delete state.schedule[fromPeriod];
   }
+}
+
+function getDisciplineAssignmentsInPeriod(disciplineId, periodId) {
+  const schedule = state.schedule[periodId];
+  if (!schedule) return [];
+  return Object.entries(schedule)
+    .filter(([, entry]) => entry?.disciplineId === disciplineId)
+    .map(([key, entry]) => {
+      const { dayKey, slotCode } = parseSlotKey(key);
+      return { key, dayKey, slotCode, entry };
+    });
+}
+
+function describeDisciplinePeriodChangeConflicts(disciplineId, fromPeriodId, toPeriodId) {
+  if (!fromPeriodId) return [];
+  const assignments = getDisciplineAssignmentsInPeriod(disciplineId, fromPeriodId);
+  if (!assignments.length) return [];
+  return assignments.map(({ key, dayKey, slotCode }) => {
+    const label = `• ${formatSlotLabel(dayKey, slotCode)}`;
+    if (toPeriodId && toPeriodId !== fromPeriodId) {
+      const destinationEntry = state.schedule[toPeriodId]?.[key];
+      if (destinationEntry && destinationEntry.disciplineId !== disciplineId) {
+        const conflictDiscipline = getDisciplineById(destinationEntry.disciplineId);
+        const conflictLabel = conflictDiscipline
+          ? formatDisciplineLabel(conflictDiscipline)
+          : 'outro compromisso';
+        return `${label} — conflito no período destino com ${conflictLabel}.`;
+      }
+    }
+    return label;
+  });
 }
 
 function deleteEntity(type, id) {
@@ -1224,41 +1300,93 @@ function findAssignmentByRoom(roomId, key) {
   return null;
 }
 
+function collectAssignmentErrors(periodId, data) {
+  const errors = [];
+  if (!data || typeof data !== 'object') {
+    errors.push('Horário configurado de forma incompleta.');
+    return errors;
+  }
+  const discipline = getDisciplineById(data?.disciplineId);
+  const professor = getProfessorById(data?.professorId);
+  const room = getRoomById(data?.roomId);
+  const period = getPeriodById(periodId);
+
+  if (!discipline) {
+    errors.push('Disciplina removida do cadastro.');
+  }
+
+  if (discipline && periodId && discipline.periodId && discipline.periodId !== periodId) {
+    const expectedPeriod = getPeriodById(discipline.periodId);
+    const expectedName = expectedPeriod ? expectedPeriod.name : discipline.periodId;
+    const currentName = period ? period.name : periodId || 'período atual';
+    errors.push(`Disciplina vinculada ao período ${expectedName}, mas configurada em ${currentName}.`);
+  }
+
+  if (!professor) {
+    errors.push('Professor removido do cadastro.');
+  } else if (discipline && !professorHasDiscipline(professor, discipline.id)) {
+    const disciplineName = discipline?.name || 'esta disciplina';
+    errors.push(`Professor ${professor.name} não está vinculado a ${disciplineName}.`);
+  }
+
+  if (!room) {
+    errors.push('Sala removida do cadastro.');
+  }
+
+  return [...new Set(errors)];
+}
+
 function buildCellContent(assignments) {
   if (!assignments.length) {
-    return '<span class="slot-empty">Disponível</span>';
+    return { html: '<span class="slot-empty">Disponível</span>', errors: [] };
   }
-  return assignments
-    .map(({ periodId, data }) => {
-      const discipline = getDisciplineById(data.disciplineId);
-      const professor = getProfessorById(data.professorId);
-      const room = getRoomById(data.roomId);
-      const period = getPeriodById(periodId);
-      const lines = [];
-      if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
-      if (period) lines.push(`<span class="badge period">${period.name}</span>`);
-      if (professor) {
-        lines.push(`<span class="badge professor">${professor.name}</span>`);
-        if (professor.isCourseArea) {
-          lines.push('<span class="badge area">Área do curso</span>');
-        }
+
+  const errorSet = new Set();
+
+  const parts = assignments.map(({ periodId, data }) => {
+    const discipline = getDisciplineById(data.disciplineId);
+    const professor = getProfessorById(data.professorId);
+    const room = getRoomById(data.roomId);
+    const period = getPeriodById(periodId);
+    const lines = [];
+    if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
+    if (period) lines.push(`<span class="badge period">${period.name}</span>`);
+    if (professor) {
+      lines.push(`<span class="badge professor">${professor.name}</span>`);
+      if (professor.isCourseArea) {
+        lines.push('<span class="badge area">Área do curso</span>');
       }
-      if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
-      const classes = ['slot-content'];
-      const styleParts = [];
-      const baseColor = getDisciplineColor(discipline);
-      if (baseColor) {
-        classes.push('with-discipline-color');
-        styleParts.push(`--discipline-color: ${baseColor}`);
-        const fill = colorWithAlpha(baseColor);
-        if (fill) {
-          styleParts.push(`--discipline-fill: ${fill}`);
-        }
+    }
+    if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
+    const classes = ['slot-content'];
+    const styleParts = [];
+    const baseColor = getDisciplineColor(discipline);
+    if (baseColor) {
+      classes.push('with-discipline-color');
+      styleParts.push(`--discipline-color: ${baseColor}`);
+      const fill = colorWithAlpha(baseColor);
+      if (fill) {
+        styleParts.push(`--discipline-fill: ${fill}`);
       }
-      const styleAttr = styleParts.length ? ` style="${styleParts.join('; ')}"` : '';
-      return `<div class="${classes.join(' ')}"${styleAttr}>${lines.join('')}</div>`;
-    })
-    .join('');
+    }
+
+    collectAssignmentErrors(periodId, data).forEach((error) => errorSet.add(error));
+
+    const styleAttr = styleParts.length ? ` style="${styleParts.join('; ')}"` : '';
+    return `<div class="${classes.join(' ')}"${styleAttr}>${lines.join('')}</div>`;
+  });
+
+  const errors = [...errorSet];
+  if (errors.length) {
+    const indicatorLabel = errors.length === 1 ? 'Erro' : 'Erros';
+    const indicator = [
+      `<span class="slot-error-indicator" aria-hidden="true">⚠️ ${indicatorLabel}</span>`,
+      `<span class="visually-hidden">${indicatorLabel}: ${errors.join('; ')}</span>`
+    ];
+    parts.push(indicator.join(''));
+  }
+
+  return { html: parts.join(''), errors };
 }
 
 function getCellAssignments(view, entityId, dayKey, slotCode) {
@@ -1323,7 +1451,15 @@ function renderSchedule() {
         button.dataset.day = day.key;
         button.dataset.slot = slot.code;
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
-        button.innerHTML = buildCellContent(assignments);
+        const cellContent = buildCellContent(assignments);
+        button.innerHTML = cellContent.html;
+        if (cellContent.errors.length) {
+          button.classList.add('has-error');
+          button.title = cellContent.errors.map((error) => `• ${error}`).join('\n');
+        } else {
+          button.classList.remove('has-error');
+          button.removeAttribute('title');
+        }
         const key = slotKey(day.key, slot.code);
         if (state.selectedSlots.has(key)) {
           button.classList.add('selected');
@@ -1452,6 +1588,8 @@ function openAssignmentModalForSlots(slotsInput) {
     elements.assignmentRoom.value = '';
   }
 
+  prioritizeAssignmentDisciplines();
+
   if (state.view === 'period') {
     elements.assignmentPeriod.disabled = true;
     elements.assignmentPeriod.value = state.selectedEntity;
@@ -1499,7 +1637,10 @@ elements.assignmentDiscipline.addEventListener('change', () => {
   updateSuggestions();
 });
 
-elements.assignmentProfessor.addEventListener('change', updateSuggestions);
+elements.assignmentProfessor.addEventListener('change', () => {
+  prioritizeAssignmentDisciplines();
+  updateSuggestions();
+});
 elements.assignmentRoom.addEventListener('change', updateSuggestions);
 elements.assignmentPeriod.addEventListener('change', updateSuggestions);
 
@@ -1766,15 +1907,52 @@ function updateSuggestions() {
   elements.suggestions.innerHTML = suggestions.join('');
 }
 
-function populateModalSelects() {
-  sortAllCollections();
-  elements.assignmentDiscipline.innerHTML = '<option value="">Selecione</option>';
+function getDisciplinesOrderedForProfessor(professorId) {
+  const linkedIds = new Set();
+  if (professorId) {
+    const professor = getProfessorById(professorId);
+    if (professor) {
+      getProfessorDisciplineIds(professor).forEach((id) => linkedIds.add(id));
+    }
+  }
+  const prioritized = [];
+  const others = [];
   state.disciplines.forEach((discipline) => {
+    const option = {
+      id: discipline.id,
+      label: formatDisciplineLabel(discipline),
+      linked: linkedIds.has(discipline.id)
+    };
+    if (option.linked) {
+      prioritized.push(option);
+    } else {
+      others.push(option);
+    }
+  });
+  return [...prioritized, ...others];
+}
+
+function fillAssignmentDisciplineOptions(professorId) {
+  if (!elements.assignmentDiscipline) return;
+  const currentValue = elements.assignmentDiscipline.value;
+  const options = getDisciplinesOrderedForProfessor(professorId);
+  elements.assignmentDiscipline.innerHTML = '<option value="">Selecione</option>';
+  options.forEach(({ id, label, linked }) => {
     const option = document.createElement('option');
-    option.value = discipline.id;
-    option.textContent = formatDisciplineLabel(discipline);
+    option.value = id;
+    option.textContent = label;
+    if (linked) {
+      option.dataset.group = 'linked';
+    }
     elements.assignmentDiscipline.appendChild(option);
   });
+  const stillExists = options.some((option) => option.id === currentValue);
+  elements.assignmentDiscipline.value = stillExists ? currentValue : '';
+}
+
+function populateModalSelects() {
+  sortAllCollections();
+  fillAssignmentDisciplineOptions(state.view === 'professor' ? state.selectedEntity : '');
 
   elements.assignmentPeriod.innerHTML = '<option value="">Selecione</option>';
   state.periods.forEach((period) => {
@@ -1799,6 +1977,12 @@ function populateModalSelects() {
     option.textContent = room.name;
     elements.assignmentRoom.appendChild(option);
   });
+}
+
+function prioritizeAssignmentDisciplines() {
+  if (!elements.assignmentDiscipline) return;
+  const professorId = elements.assignmentProfessor.value;
+  fillAssignmentDisciplineOptions(professorId);
 }
 
 function updatePeriodByDiscipline() {
@@ -2651,6 +2835,10 @@ function bindForms() {
     const codeValue = elements.disciplineCodeInput?.value.trim() || '';
     if (!name || !period) {
       alert('Informe o nome e selecione um período.');
+      return;
+    }
+    if (isDuplicateDisciplineName(name)) {
+      alert('Já existe uma disciplina com este nome.');
       return;
     }
     if (codeValue && isDuplicateDisciplineCode(codeValue)) {
