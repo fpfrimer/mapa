@@ -267,6 +267,7 @@ const elements = {
   roomForm: document.getElementById('room-form'),
   disciplineForm: document.getElementById('discipline-form'),
   disciplineCodeInput: document.getElementById('discipline-code'),
+  disciplineHoursInput: document.getElementById('discipline-hours'),
   periodList: document.getElementById('period-list'),
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
@@ -355,6 +356,40 @@ function normalizeCode(value) {
   return normalizeText(value || '');
 }
 
+function normalizeRequiredSlots(value) {
+  const numeric = Number.parseInt(value, 10);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+  return numeric;
+}
+
+let latestDisciplineUsage = {};
+
+function computeDisciplineUsage() {
+  const counts = new Map();
+  Object.values(state.schedule || {}).forEach((slots) => {
+    Object.values(slots || {}).forEach((entry) => {
+      if (!entry || !entry.disciplineId) return;
+      const current = counts.get(entry.disciplineId) || 0;
+      counts.set(entry.disciplineId, current + 1);
+    });
+  });
+
+  const usage = {};
+  state.disciplines.forEach((discipline) => {
+    if (!discipline) return;
+    const required = normalizeRequiredSlots(discipline.requiredSlots);
+    const actual = counts.get(discipline.id) || 0;
+    const missing = required > 0 ? Math.max(required - actual, 0) : 0;
+    const excess = required > 0 ? Math.max(actual - required, 0) : 0;
+    usage[discipline.id] = { required, actual, missing, excess };
+  });
+
+  latestDisciplineUsage = usage;
+  return usage;
+}
+
 function getEntitySortKey(entity, type) {
   const nameKey = normalizeText(entity?.name || '');
   const codeKey = type === 'discipline' ? normalizeText(entity?.code || '') : '';
@@ -424,6 +459,7 @@ function generateId(type) {
 function renderEntityList(list, container, type) {
   container.innerHTML = '';
   const query = normalizeText(searchQueries[type] || '');
+  const disciplineUsage = type === 'discipline' ? computeDisciplineUsage() : null;
   const filtered = list
     .map((item) => {
       const isEditing =
@@ -447,6 +483,17 @@ function renderEntityList(list, container, type) {
   filtered.forEach(({ item, isEditing }) => {
     const li = document.createElement('li');
     li.className = 'entity-item';
+    let usage = null;
+    if (type === 'discipline' && disciplineUsage) {
+      usage = disciplineUsage[item.id] || null;
+      if (usage && usage.required > 0) {
+        if (usage.missing > 0) {
+          li.classList.add('discipline-underloaded');
+        } else if (usage.excess > 0) {
+          li.classList.add('discipline-overloaded');
+        }
+      }
+    }
 
     if (isEditing) {
       const form = document.createElement('form');
@@ -463,12 +510,20 @@ function renderEntityList(list, container, type) {
       let areaCheckbox = null;
       let codeInput = null;
       let periodSelect = null;
+      let requiredInput = null;
       if (type === 'discipline') {
         codeInput = document.createElement('input');
         codeInput.type = 'text';
         codeInput.placeholder = 'Código (opcional)';
         codeInput.value = item.code || '';
         form.appendChild(codeInput);
+
+        requiredInput = document.createElement('input');
+        requiredInput.type = 'number';
+        requiredInput.min = '0';
+        requiredInput.placeholder = 'Qtd. de horários (opcional)';
+        requiredInput.value = item.requiredSlots ? String(item.requiredSlots) : '';
+        form.appendChild(requiredInput);
 
         periodSelect = document.createElement('select');
         periodSelect.required = true;
@@ -538,6 +593,7 @@ function renderEntityList(list, container, type) {
             return;
           }
           updates.code = codeValue;
+          updates.requiredSlots = normalizeRequiredSlots(requiredInput?.value || 0);
           const selectedPeriod = periodSelect?.value || '';
           if (!selectedPeriod) {
             alert('Selecione um período para a disciplina.');
@@ -589,10 +645,40 @@ function renderEntityList(list, container, type) {
 
       if (type === 'discipline') {
         const period = getPeriodById(item.periodId);
-        const meta = document.createElement('span');
-        meta.className = 'entity-meta';
-        meta.textContent = period ? period.name : 'Sem período';
-        info.appendChild(meta);
+        const periodMeta = document.createElement('span');
+        periodMeta.className = 'entity-meta';
+        periodMeta.textContent = period ? period.name : 'Sem período';
+        info.appendChild(periodMeta);
+
+        if (usage) {
+          const usageMeta = document.createElement('span');
+          usageMeta.className = 'entity-meta';
+          if (usage.required > 0) {
+            usageMeta.textContent = `Horários atribuídos: ${usage.actual} de ${usage.required}`;
+          } else {
+            usageMeta.textContent = `Horários atribuídos: ${usage.actual}`;
+          }
+          info.appendChild(usageMeta);
+
+          if (usage.required > 0) {
+            if (usage.missing > 0) {
+              const badge = document.createElement('span');
+              badge.className = 'entity-badge warning';
+              badge.textContent = `Faltam ${usage.missing}`;
+              info.appendChild(badge);
+            } else if (usage.excess > 0) {
+              const badge = document.createElement('span');
+              badge.className = 'entity-badge danger';
+              badge.textContent = `Excesso de ${usage.excess}`;
+              info.appendChild(badge);
+            } else {
+              const badge = document.createElement('span');
+              badge.className = 'entity-badge success';
+              badge.textContent = 'Carga atendida';
+              info.appendChild(badge);
+            }
+          }
+        }
       }
 
       if (type === 'professor') {
@@ -946,6 +1032,7 @@ function saveEntityEdit(type, id, updates) {
       }
     }
     entity.code = updates.code || '';
+    entity.requiredSlots = normalizeRequiredSlots(updates.requiredSlots || 0);
     entity.periodId = newPeriod;
     if (previousPeriod && newPeriod && previousPeriod !== newPeriod) {
       moveDisciplineAssignments(id, previousPeriod, newPeriod);
@@ -1333,6 +1420,15 @@ function collectAssignmentErrors(periodId, data) {
     errors.push('Sala removida do cadastro.');
   }
 
+  if (discipline) {
+    const usage = latestDisciplineUsage?.[discipline.id];
+    if (usage && usage.required > 0 && usage.excess > 0) {
+      errors.push(
+        `Disciplina excedeu a carga prevista em ${usage.excess} horário${usage.excess > 1 ? 's' : ''}.`
+      );
+    }
+  }
+
   return [...new Set(errors)];
 }
 
@@ -1412,6 +1508,8 @@ function renderSchedule() {
     scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
     return;
   }
+
+  computeDisciplineUsage();
 
   const table = document.createElement('table');
   table.className = 'schedule-table';
@@ -1588,6 +1686,7 @@ function openAssignmentModalForSlots(slotsInput) {
     elements.assignmentRoom.value = '';
   }
 
+  prioritizeAssignmentProfessors();
   prioritizeAssignmentDisciplines();
 
   if (state.view === 'period') {
@@ -1634,6 +1733,7 @@ elements.modal.addEventListener('click', (event) => {
 
 elements.assignmentDiscipline.addEventListener('change', () => {
   updatePeriodByDiscipline();
+  prioritizeAssignmentProfessors();
   updateSuggestions();
 });
 
@@ -1643,6 +1743,14 @@ elements.assignmentProfessor.addEventListener('change', () => {
 });
 elements.assignmentRoom.addEventListener('change', updateSuggestions);
 elements.assignmentPeriod.addEventListener('change', updateSuggestions);
+
+if (elements.suggestions) {
+  elements.suggestions.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-suggestion-action]');
+    if (!target) return;
+    handleSuggestionAction(target.dataset.suggestionAction);
+  });
+}
 
 elements.assignmentForm.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1710,6 +1818,7 @@ elements.assignmentForm.addEventListener('submit', (event) => {
   persistState();
   closeModal();
   renderSchedule();
+  refreshLists();
 });
 
 elements.removeAssignment.addEventListener('click', () => {
@@ -1738,6 +1847,7 @@ elements.removeAssignment.addEventListener('click', () => {
     persistState();
     closeModal();
     renderSchedule();
+    refreshLists();
   }
 });
 
@@ -1826,7 +1936,9 @@ function updateSuggestions() {
   const periodConflicts = [];
   if (periodId) {
     const entry = state.schedule[periodId]?.[key];
-    if (entry) {
+    const isSameRecord =
+      detail.originalEntry && periodId === detail.originalPeriodId && entry === detail.originalEntry;
+    if (entry && !isSameRecord) {
       const disciplineExisting = getDisciplineById(entry.disciplineId);
       periodConflicts.push(
         `Período já possui ${
@@ -1895,7 +2007,7 @@ function updateSuggestions() {
     const selectedProfessor = getProfessorById(professorId);
     if (selectedProfessor && !professorHasDiscipline(selectedProfessor, disciplineId)) {
       suggestions.push(
-        '<span class="suggestion-warning">Professor selecionado não está vinculado a esta disciplina.</span>'
+        '<button type="button" class="suggestion-warning suggestion-action" data-suggestion-action="link-professor">Professor selecionado não está vinculado a esta disciplina. Clique para vincular.</button>'
       );
     }
   }
@@ -1905,6 +2017,36 @@ function updateSuggestions() {
   });
 
   elements.suggestions.innerHTML = suggestions.join('');
+}
+
+function handleSuggestionAction(action) {
+  if (action !== 'link-professor') return;
+  if (!state.assignmentEditing) return;
+  const disciplineId = elements.assignmentDiscipline.value;
+  const professorId = elements.assignmentProfessor.value;
+  if (!disciplineId || !professorId) return;
+
+  const discipline = getDisciplineById(disciplineId);
+  const professor = getProfessorById(professorId);
+  if (!discipline || !professor) return;
+
+  const proceed = confirm(
+    `Deseja vincular ${professor.name} à disciplina ${formatDisciplineLabel(discipline)}?`
+  );
+  if (!proceed) return;
+
+  const updated = sanitizeDisciplineIdList(professor.disciplineIds);
+  if (updated.includes(disciplineId)) {
+    return;
+  }
+
+  updated.push(disciplineId);
+  professor.disciplineIds = updated;
+  persistState();
+  refreshLists();
+  prioritizeAssignmentProfessors();
+  prioritizeAssignmentDisciplines();
+  updateSuggestions();
 }
 
 function getDisciplinesOrderedForProfessor(professorId) {
@@ -1932,6 +2074,34 @@ function getDisciplinesOrderedForProfessor(professorId) {
   return [...prioritized, ...others];
 }
 
+function getProfessorsOrderedForDiscipline(disciplineId) {
+  const prioritizedIds = new Set();
+  if (disciplineId) {
+    state.professors.forEach((professor) => {
+      if (professorHasDiscipline(professor, disciplineId)) {
+        prioritizedIds.add(professor.id);
+      }
+    });
+  }
+
+  const prioritized = [];
+  const others = [];
+  state.professors.forEach((professor) => {
+    const option = {
+      id: professor.id,
+      label: formatProfessorOptionLabel(professor),
+      linked: prioritizedIds.has(professor.id)
+    };
+    if (option.linked) {
+      prioritized.push(option);
+    } else {
+      others.push(option);
+    }
+  });
+
+  return [...prioritized, ...others];
+}
+
 function fillAssignmentDisciplineOptions(professorId) {
   if (!elements.assignmentDiscipline) return;
   const currentValue = elements.assignmentDiscipline.value;
@@ -1950,6 +2120,32 @@ function fillAssignmentDisciplineOptions(professorId) {
   elements.assignmentDiscipline.value = stillExists ? currentValue : '';
 }
 
+function fillAssignmentProfessorOptions(disciplineId, options = {}) {
+  if (!elements.assignmentProfessor) return;
+  const { preserveValue = true, presetValue = null } = options;
+  const currentValue = preserveValue ? elements.assignmentProfessor.value : '';
+  const desiredValue = presetValue !== null ? presetValue : currentValue;
+  const professorOptions = getProfessorsOrderedForDiscipline(disciplineId);
+
+  elements.assignmentProfessor.innerHTML = '<option value="">Selecione</option>';
+  professorOptions.forEach(({ id, label, linked }) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = label;
+    if (linked) {
+      option.dataset.group = 'linked';
+    }
+    elements.assignmentProfessor.appendChild(option);
+  });
+
+  if (desiredValue) {
+    const exists = professorOptions.some((option) => option.id === desiredValue);
+    elements.assignmentProfessor.value = exists ? desiredValue : '';
+  } else {
+    elements.assignmentProfessor.value = '';
+  }
+}
+
 function populateModalSelects() {
   sortAllCollections();
   fillAssignmentDisciplineOptions(state.view === 'professor' ? state.selectedEntity : '');
@@ -1962,13 +2158,7 @@ function populateModalSelects() {
     elements.assignmentPeriod.appendChild(option);
   });
 
-  elements.assignmentProfessor.innerHTML = '<option value="">Selecione</option>';
-  state.professors.forEach((professor) => {
-    const option = document.createElement('option');
-    option.value = professor.id;
-    option.textContent = formatProfessorOptionLabel(professor);
-    elements.assignmentProfessor.appendChild(option);
-  });
+  fillAssignmentProfessorOptions('', { preserveValue: false });
 
   elements.assignmentRoom.innerHTML = '<option value="">Selecione</option>';
   state.rooms.forEach((room) => {
@@ -1983,6 +2173,12 @@ function prioritizeAssignmentDisciplines() {
   if (!elements.assignmentDiscipline) return;
   const professorId = elements.assignmentProfessor.value;
   fillAssignmentDisciplineOptions(professorId);
+}
+
+function prioritizeAssignmentProfessors() {
+  if (!elements.assignmentProfessor) return;
+  const disciplineId = elements.assignmentDiscipline.value;
+  fillAssignmentProfessorOptions(disciplineId);
 }
 
 function updatePeriodByDiscipline() {
@@ -2417,7 +2613,8 @@ function applyStateFromData(data) {
     ? data.disciplines.map((discipline) => ({
         ...discipline,
         code: typeof discipline?.code === 'string' ? discipline.code : '',
-        color: typeof discipline?.color === 'string' ? discipline.color : ''
+        color: typeof discipline?.color === 'string' ? discipline.color : '',
+        requiredSlots: normalizeRequiredSlots(discipline?.requiredSlots)
       }))
     : [];
   state.professors = Array.isArray(data.professors)
@@ -2833,6 +3030,7 @@ function bindForms() {
     const name = nameInput.value.trim();
     const period = elements.disciplinePeriodSelect.value;
     const codeValue = elements.disciplineCodeInput?.value.trim() || '';
+    const hoursValue = elements.disciplineHoursInput?.value || '';
     if (!name || !period) {
       alert('Informe o nome e selecione um período.');
       return;
@@ -2849,13 +3047,17 @@ function bindForms() {
       id: generateId('discipline'),
       name,
       periodId: period,
-      code: codeValue
+      code: codeValue,
+      requiredSlots: normalizeRequiredSlots(hoursValue)
     };
     assignColorToDiscipline(discipline);
     state.disciplines.push(discipline);
     nameInput.value = '';
     if (elements.disciplineCodeInput) {
       elements.disciplineCodeInput.value = '';
+    }
+    if (elements.disciplineHoursInput) {
+      elements.disciplineHoursInput.value = '';
     }
     elements.disciplinePeriodSelect.value = '';
     refreshLists();

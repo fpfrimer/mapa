@@ -145,6 +145,14 @@
         <form id="discipline-form" class="inline-form">
           <input type="text" id="discipline-name" placeholder="Nome da disciplina" required />
           <input type="text" id="discipline-code" placeholder="Código (opcional)" />
+          <input
+            type="number"
+            id="discipline-hours"
+            min="0"
+            inputmode="numeric"
+            placeholder="Qtd. de horários (opcional)"
+            aria-label="Quantidade de horários prevista para a disciplina"
+          />
           <select id="discipline-period" required>
             <option value="">Período</option>
           </select>

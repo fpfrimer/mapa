@@ -5,6 +5,8 @@
   --primary: #2962ff;
   --primary-dark: #1743b3;
   --danger: #c62828;
+  --warning: #ef6c00;
+  --success: #2e7d32;
   --text: #1f2d3d;
   --muted: #607d8b;
   --manha: #fff3cd;
@@ -312,6 +314,26 @@ main {
   color: var(--primary-dark);
   padding: 0.6rem 0.75rem;
   border-radius: 12px;
+}
+
+.entity-item.discipline-underloaded {
+  background: rgba(239, 108, 0, 0.08);
+  border-left: 4px solid var(--warning);
+  box-shadow: 0 0 0 1px rgba(239, 108, 0, 0.12);
+}
+
+.entity-item.discipline-overloaded {
+  background: rgba(198, 40, 40, 0.08);
+  border-left: 4px solid var(--danger);
+  box-shadow: 0 0 0 1px rgba(198, 40, 40, 0.12);
+}
+
+.entity-item.discipline-underloaded .entity-meta {
+  color: var(--warning);
+}
+
+.entity-item.discipline-overloaded .entity-meta {
+  color: var(--danger);
 }
 
 .entity-info {
@@ -850,6 +872,28 @@ button.primary:hover {
   font-weight: 600;
 }
 
+.suggestion-action {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--danger);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.suggestion-action:hover,
+.suggestion-action:focus {
+  text-decoration: none;
+}
+
+.suggestion-action:focus-visible {
+  outline: 2px solid rgba(198, 40, 40, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -891,6 +935,21 @@ button.primary:hover {
   background: rgba(0, 0, 0, 0.05);
   margin-top: 0.35rem;
   width: fit-content;
+}
+
+.entity-badge.success {
+  background: rgba(46, 125, 50, 0.15);
+  color: var(--success);
+}
+
+.entity-badge.warning {
+  background: rgba(239, 108, 0, 0.18);
+  color: var(--warning);
+}
+
+.entity-badge.danger {
+  background: rgba(198, 40, 40, 0.18);
+  color: var(--danger);
 }
 
 .entity-badge + .entity-meta {
