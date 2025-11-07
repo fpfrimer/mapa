@@ -36,7 +36,15 @@
     </nav>
 
     <section class="schedule-panel">
-      <div class="view-panel" aria-label="Controles de visualização">
+      <div class="view-panel" aria-label="Resumo da visualização">
+        <div id="view-summary" class="view-summary" aria-live="polite"></div>
+      </div>
+
+      <div id="schedule-container" class="schedule-container">
+        <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
+      </div>
+
+      <div class="control-sidebar" aria-label="Controles da grade de horários">
         <div class="view-controls">
           <div class="control-group">
             <label for="view-type">Visualizar por:</label>
@@ -65,12 +73,6 @@
             <button type="button" id="clear-selection" disabled>Limpar</button>
           </div>
         </div>
-
-        <div id="view-summary" class="view-summary" aria-live="polite"></div>
-      </div>
-
-      <div id="schedule-container" class="schedule-container">
-        <p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>
       </div>
     </section>
   </main>

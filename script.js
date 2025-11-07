@@ -2278,6 +2278,16 @@ elements.assignmentPeriod.addEventListener('change', updateSuggestions);
 
 if (elements.suggestions) {
   elements.suggestions.addEventListener('click', (event) => {
+    const roomTarget = event.target.closest('[data-suggestion-room]');
+    if (roomTarget) {
+      const { suggestionRoom } = roomTarget.dataset;
+      if (suggestionRoom) {
+        elements.assignmentRoom.value = suggestionRoom;
+        elements.assignmentRoom.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return;
+    }
+
     const target = event.target.closest('[data-suggestion-action]');
     if (!target) return;
     handleSuggestionAction(target.dataset.suggestionAction);
@@ -2420,10 +2430,41 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
   return [...new Set(conflicts)];
 }
 
+function getAssignmentDetails() {
+  if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) {
+    return [];
+  }
+  return state.assignmentEditing.details;
+}
+
+function getAvailableRoomsForDetails(details) {
+  if (!Array.isArray(details) || !details.length) {
+    return state.rooms.filter((room) => room && room.id);
+  }
+
+  return state.rooms.filter((room) => {
+    if (!room || !room.id) return false;
+    return details.every((detail) => {
+      const key = detail.key;
+      return !Object.entries(state.schedule).some(([pId, slots]) => {
+        const entry = slots?.[key];
+        if (!entry) return false;
+        const isSameRecord =
+          detail.originalEntry && detail.originalPeriodId === pId && entry === detail.originalEntry;
+        if (isSameRecord) return false;
+        return entry.roomId === room.id;
+      });
+    });
+  });
+}
+
 function updateSuggestions() {
   if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
   const details = state.assignmentEditing.details;
   if (!details.length) return;
+
+  const availableRooms = getAvailableRoomsForDetails(details);
+  fillAssignmentRoomOptions({ availableRooms });
 
   if (state.assignmentEditing.multi) {
     elements.suggestions.innerHTML =
@@ -2438,17 +2479,6 @@ function updateSuggestions() {
   const roomId = elements.assignmentRoom.value;
   const disciplineId = elements.assignmentDiscipline.value;
 
-  const availableRooms = state.rooms.filter((room) => {
-    if (!room.id) return false;
-    return !Object.entries(state.schedule).some(([pId, slots]) => {
-      const entry = slots[key];
-      if (!entry) return false;
-      const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
-      if (isSameRecord) return false;
-      return entry.roomId === room.id;
-    });
-  });
-
   const availableProfessors = state.professors.filter((professor) => {
     if (!professor.id) return false;
     return !Object.entries(state.schedule).some(([pId, slots]) => {
@@ -2458,11 +2488,6 @@ function updateSuggestions() {
       if (isSameRecord) return false;
       return entry.professorId === professor.id;
     });
-  });
-
-  const availableProfessorNames = availableProfessors.map((professor) => {
-    const details = getProfessorDetailParts(professor);
-    return details.length ? `${professor.name} (${details.join(' • ')})` : professor.name;
   });
 
   const periodConflicts = [];
@@ -2504,18 +2529,19 @@ function updateSuggestions() {
   if (disciplinePeriodHint) {
     suggestions.push(`<span>${disciplinePeriodHint}</span>`);
   }
-  suggestions.push(
-    `<span><strong>Salas disponíveis:</strong> ${
-      availableRooms.length ? availableRooms.map((r) => r.name).join(', ') : 'Nenhuma sala livre'
-    }</span>`
-  );
-  suggestions.push(
-    `<span><strong>Professores disponíveis:</strong> ${
-      availableProfessors.length
-        ? availableProfessorNames.join(', ')
-        : 'Nenhum professor livre'
-    }</span>`
-  );
+  if (availableRooms.length) {
+    const options = availableRooms
+      .map(
+        (room) =>
+          `<button type="button" class="suggestion-chip" data-suggestion-room="${room.id}">${room.name}</button>`
+      )
+      .join('');
+    suggestions.push(
+      `<div class="suggestion-block"><span class="suggestion-label">Salas disponíveis:</span><div class="suggestion-options">${options}</div></div>`
+    );
+  } else {
+    suggestions.push('<span><strong>Salas disponíveis:</strong> Nenhuma sala livre</span>');
+  }
 
   if (disciplineId) {
     const recommendedProfessors = availableProfessors.filter((professor) =>
@@ -2678,6 +2704,44 @@ function fillAssignmentProfessorOptions(disciplineId, options = {}) {
   }
 }
 
+function fillAssignmentRoomOptions(options = {}) {
+  if (!elements.assignmentRoom) return;
+  const { preserveValue = true, availableRooms = null } = options;
+  const currentValue = preserveValue ? elements.assignmentRoom.value : '';
+  const details = getAssignmentDetails();
+  const resolvedAvailable = Array.isArray(availableRooms)
+    ? availableRooms
+    : getAvailableRoomsForDetails(details);
+  const availableIds = new Set(resolvedAvailable.filter((room) => room && room.id).map((room) => room.id));
+  const rooms = state.rooms.filter((room) => room && room.id);
+
+  rooms.sort((a, b) => {
+    const aAvailable = availableIds.has(a.id);
+    const bAvailable = availableIds.has(b.id);
+    if (aAvailable !== bAvailable) {
+      return aAvailable ? -1 : 1;
+    }
+    return compareEntities('room', a, b);
+  });
+
+  elements.assignmentRoom.innerHTML = '<option value="">Selecione</option>';
+  rooms.forEach((room) => {
+    const option = document.createElement('option');
+    option.value = room.id;
+    option.textContent = room.name;
+    if (availableIds.has(room.id)) {
+      option.dataset.available = 'true';
+    }
+    elements.assignmentRoom.appendChild(option);
+  });
+
+  if (currentValue && rooms.some((room) => room.id === currentValue)) {
+    elements.assignmentRoom.value = currentValue;
+  } else {
+    elements.assignmentRoom.value = '';
+  }
+}
+
 function populateModalSelects() {
   sortAllCollections();
   fillAssignmentDisciplineOptions(state.view === 'professor' ? state.selectedEntity : '');
@@ -2691,14 +2755,7 @@ function populateModalSelects() {
   });
 
   fillAssignmentProfessorOptions('', { preserveValue: false });
-
-  elements.assignmentRoom.innerHTML = '<option value="">Selecione</option>';
-  state.rooms.forEach((room) => {
-    const option = document.createElement('option');
-    option.value = room.id;
-    option.textContent = room.name;
-    elements.assignmentRoom.appendChild(option);
-  });
+  fillAssignmentRoomOptions({ preserveValue: false });
 }
 
 function prioritizeAssignmentDisciplines() {

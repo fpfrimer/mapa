@@ -518,6 +518,16 @@ button.primary:hover {
   overflow-y: auto;
 }
 
+.control-sidebar {
+  background: var(--panel-bg);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 10px 24px rgba(31, 45, 61, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 .view-controls {
   display: flex;
   flex-wrap: wrap;
@@ -801,7 +811,7 @@ button.primary:hover {
 .schedule-table thead th {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 8;
   background: rgba(31, 45, 61, 0.06);
   font-weight: 600;
   text-transform: uppercase;
@@ -1062,6 +1072,42 @@ button.primary:hover {
   gap: 0.35rem;
 }
 
+.suggestion-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.suggestion-label {
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.suggestion-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.suggestion-chip {
+  border: none;
+  border-radius: 999px;
+  background: rgba(56, 142, 60, 0.12);
+  color: #1b5e20;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.suggestion-chip:hover,
+.suggestion-chip:focus-visible {
+  background: rgba(56, 142, 60, 0.22);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .suggestions strong {
   color: var(--primary-dark);
 }
@@ -1091,6 +1137,12 @@ button.primary:hover {
   outline: 2px solid rgba(198, 40, 40, 0.5);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+#assignment-room option[data-available='true'] {
+  background: rgba(56, 142, 60, 0.18);
+  color: #1b5e20;
+  font-weight: 600;
 }
 
 .badge {
@@ -1439,6 +1491,11 @@ button.primary:hover {
 
   .control-group select {
     min-width: 100%;
+  }
+
+  .control-sidebar {
+    padding: 1rem 1.25rem;
+    gap: 1rem;
   }
 
   .selection-tools {
