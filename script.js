@@ -655,6 +655,24 @@ function createProfessorDisciplineEditor(initialIds = []) {
 
   const selected = new Set(sanitizeDisciplineIdList(initialIds));
 
+  function capturePendingSelection() {
+    const value = select.value;
+    if (!value) return false;
+    if (selected.has(value)) {
+      select.value = '';
+      return false;
+    }
+    const exists = state.disciplines.some((discipline) => discipline.id === value);
+    if (!exists) {
+      select.value = '';
+      return false;
+    }
+    selected.add(value);
+    select.value = '';
+    refreshList();
+    return true;
+  }
+
   function refreshOptions() {
     const current = select.value;
     select.innerHTML = '<option value="">Adicionar disciplina (opcional)</option>';
@@ -701,20 +719,7 @@ function createProfessorDisciplineEditor(initialIds = []) {
   }
 
   addButton.addEventListener('click', () => {
-    const value = select.value;
-    if (!value) return;
-    if (selected.has(value)) {
-      select.value = '';
-      return;
-    }
-    const exists = state.disciplines.some((discipline) => discipline.id === value);
-    if (!exists) {
-      select.value = '';
-      return;
-    }
-    selected.add(value);
-    select.value = '';
-    refreshList();
+    capturePendingSelection();
   });
 
   list.addEventListener('click', (event) => {
@@ -730,7 +735,10 @@ function createProfessorDisciplineEditor(initialIds = []) {
 
   return {
     container: wrapper,
-    getSelectedIds: () => Array.from(selected)
+    getSelectedIds: () => {
+      capturePendingSelection();
+      return Array.from(selected);
+    }
   };
 }
 
@@ -2589,6 +2597,15 @@ function bindForms() {
     const input = document.getElementById('professor-name');
     const name = input.value.trim();
     if (!name) return;
+    const pendingSelection = elements.professorDisciplineSelect?.value;
+    if (pendingSelection) {
+      const exists = state.disciplines.some((discipline) => discipline.id === pendingSelection);
+      if (exists) {
+        professorFormDisciplineIds.add(pendingSelection);
+        elements.professorDisciplineSelect.value = '';
+        renderProfessorFormDisciplineChips();
+      }
+    }
     const selectedIds = sanitizeDisciplineIdList(Array.from(professorFormDisciplineIds));
     const validIds = selectedIds.filter((id) =>
       state.disciplines.some((discipline) => discipline.id === id)

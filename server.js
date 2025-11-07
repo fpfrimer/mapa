@@ -1,15 +1,27 @@
-const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 
-const app = express();
-const port = process.env.PORT || 3000;
-
+const PORT = process.env.PORT || 3000;
+const PUBLIC_DIR = __dirname;
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'configurations.json');
+const MAX_BODY_SIZE = 5 * 1024 * 1024; // 5MB
 
-app.use(express.json({ limit: '5mb' }));
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
 
 function generateConfigId() {
   const random = Math.random().toString(36).slice(2, 8);
@@ -85,96 +97,243 @@ function sanitizeConfigurationInput(payload) {
   return { name, state, counters };
 }
 
-app.get('/api/configurations', async (req, res) => {
+function sendJson(res, status, data) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+
+function sendEmpty(res, status) {
+  res.writeHead(status);
+  res.end();
+}
+
+function sendText(res, status, text) {
+  res.writeHead(status, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Length': Buffer.byteLength(text)
+  });
+  res.end(text);
+}
+
+async function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > MAX_BODY_SIZE) {
+        reject(new Error('PAYLOAD_TOO_LARGE'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!data) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(data));
+      } catch (error) {
+        reject(new Error('INVALID_JSON'));
+      }
+    });
+    req.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+function extractConfigId(pathname) {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts.length === 3) {
+    return decodeURIComponent(parts[2]);
+  }
+  return '';
+}
+
+async function handleConfigurationsApi(req, res, url) {
+  const { pathname } = url;
+  if (req.method === 'GET' && pathname === '/api/configurations') {
+    try {
+      const configs = await readConfigurations();
+      sendJson(res, 200, { items: configs });
+    } catch (error) {
+      console.error('Erro ao listar configurações.', error);
+      sendJson(res, 500, { message: 'Não foi possível listar as configurações salvas.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/configurations') {
+    try {
+      const payload = await parseJsonBody(req);
+      const input = sanitizeConfigurationInput(payload);
+      if (!input) {
+        sendJson(res, 400, { message: 'Dados de configuração inválidos.' });
+        return;
+      }
+      const configs = await readConfigurations();
+      const id = generateConfigId();
+      const savedAt = new Date().toISOString();
+      const entry = { id, name: input.name, savedAt, state: input.state, counters: input.counters };
+      configs.push(entry);
+      await writeConfigurations(configs);
+      sendJson(res, 201, entry);
+    } catch (error) {
+      if (error.message === 'INVALID_JSON') {
+        sendJson(res, 400, { message: 'JSON inválido.' });
+        return;
+      }
+      if (error.message === 'PAYLOAD_TOO_LARGE') {
+        sendJson(res, 413, { message: 'Payload excede o limite permitido.' });
+        return;
+      }
+      console.error('Erro ao salvar configuração.', error);
+      sendJson(res, 500, { message: 'Não foi possível salvar a configuração.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/configurations/')) {
+    const id = extractConfigId(pathname);
+    if (!id) {
+      sendJson(res, 400, { message: 'Identificador inválido.' });
+      return;
+    }
+    try {
+      const payload = await parseJsonBody(req);
+      const input = sanitizeConfigurationInput(payload);
+      if (!input) {
+        sendJson(res, 400, { message: 'Dados de configuração inválidos.' });
+        return;
+      }
+      const configs = await readConfigurations();
+      const index = configs.findIndex((item) => item.id === id);
+      if (index === -1) {
+        sendJson(res, 404, { message: 'Configuração não encontrada.' });
+        return;
+      }
+      const savedAt = new Date().toISOString();
+      const updated = { id, name: input.name, savedAt, state: input.state, counters: input.counters };
+      configs[index] = updated;
+      await writeConfigurations(configs);
+      sendJson(res, 200, updated);
+    } catch (error) {
+      if (error.message === 'INVALID_JSON') {
+        sendJson(res, 400, { message: 'JSON inválido.' });
+        return;
+      }
+      if (error.message === 'PAYLOAD_TOO_LARGE') {
+        sendJson(res, 413, { message: 'Payload excede o limite permitido.' });
+        return;
+      }
+      console.error('Erro ao atualizar configuração.', error);
+      sendJson(res, 500, { message: 'Não foi possível atualizar a configuração.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/configurations/')) {
+    const id = extractConfigId(pathname);
+    if (!id) {
+      sendJson(res, 400, { message: 'Identificador inválido.' });
+      return;
+    }
+    try {
+      const configs = await readConfigurations();
+      const filtered = configs.filter((item) => item.id !== id);
+      if (filtered.length === configs.length) {
+        sendJson(res, 404, { message: 'Configuração não encontrada.' });
+        return;
+      }
+      await writeConfigurations(filtered);
+      sendEmpty(res, 204);
+    } catch (error) {
+      console.error('Erro ao remover configuração.', error);
+      sendJson(res, 500, { message: 'Não foi possível remover a configuração.' });
+    }
+    return;
+  }
+
+  sendJson(res, 405, { message: 'Método não suportado.' });
+}
+
+async function serveStatic(req, res, pathname) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    sendJson(res, 405, { message: 'Método não suportado.' });
+    return;
+  }
+
+  const safePath = path.normalize(path.join(PUBLIC_DIR, pathname === '/' ? '/index.html' : pathname));
+  if (!safePath.startsWith(PUBLIC_DIR)) {
+    sendJson(res, 403, { message: 'Acesso negado.' });
+    return;
+  }
+
   try {
-    const configs = await readConfigurations();
-    res.json({ items: configs });
+    let targetPath = safePath;
+    const stats = await fsp.stat(targetPath);
+    if (stats.isDirectory()) {
+      targetPath = path.join(targetPath, 'index.html');
+    }
+    const ext = path.extname(targetPath).toLowerCase();
+    const mime = MIME_TYPES[ext] || 'application/octet-stream';
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { 'Content-Type': mime });
+      res.end();
+      return;
+    }
+    const data = await fsp.readFile(targetPath);
+    res.writeHead(200, { 'Content-Type': mime });
+    res.end(data);
   } catch (error) {
-    console.error('Erro ao listar configurações.', error);
-    res.status(500).json({ message: 'Não foi possível listar as configurações salvas.' });
+    if (req.method === 'GET') {
+      try {
+        const indexPath = path.join(PUBLIC_DIR, 'index.html');
+        const data = await fsp.readFile(indexPath);
+        res.writeHead(200, { 'Content-Type': MIME_TYPES['.html'] });
+        res.end(data);
+      } catch (fallbackError) {
+        console.error('Erro ao servir arquivo estático.', fallbackError);
+        sendJson(res, 404, { message: 'Arquivo não encontrado.' });
+      }
+    } else {
+      sendJson(res, 404, { message: 'Arquivo não encontrado.' });
+    }
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  try {
+    if (url.pathname.startsWith('/api/configurations')) {
+      await handleConfigurationsApi(req, res, url);
+    } else {
+      await serveStatic(req, res, url.pathname);
+    }
+  } catch (error) {
+    console.error('Erro inesperado no servidor.', error);
+    if (!res.headersSent) {
+      sendJson(res, 500, { message: 'Erro interno do servidor.' });
+    } else {
+      res.end();
+    }
   }
 });
 
-app.post('/api/configurations', async (req, res) => {
-  try {
-    const input = sanitizeConfigurationInput(req.body);
-    if (!input) {
-      return res.status(400).json({ message: 'Dados de configuração inválidos.' });
-    }
-    const configs = await readConfigurations();
-    const id = generateConfigId();
-    const savedAt = new Date().toISOString();
-    const entry = { id, name: input.name, savedAt, state: input.state, counters: input.counters };
-    configs.push(entry);
-    await writeConfigurations(configs);
-    res.status(201).json(entry);
-  } catch (error) {
-    console.error('Erro ao salvar configuração.', error);
-    res.status(500).json({ message: 'Não foi possível salvar a configuração.' });
+server.on('clientError', (err, socket) => {
+  if (socket.writable) {
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   }
-});
-
-app.put('/api/configurations/:id', async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ message: 'Identificador inválido.' });
-  }
-  try {
-    const input = sanitizeConfigurationInput(req.body);
-    if (!input) {
-      return res.status(400).json({ message: 'Dados de configuração inválidos.' });
-    }
-    const configs = await readConfigurations();
-    const index = configs.findIndex((item) => item.id === id);
-    if (index === -1) {
-      return res.status(404).json({ message: 'Configuração não encontrada.' });
-    }
-    const savedAt = new Date().toISOString();
-    const updated = {
-      id,
-      name: input.name,
-      savedAt,
-      state: input.state,
-      counters: input.counters
-    };
-    configs[index] = updated;
-    await writeConfigurations(configs);
-    res.json(updated);
-  } catch (error) {
-    console.error('Erro ao atualizar configuração.', error);
-    res.status(500).json({ message: 'Não foi possível atualizar a configuração.' });
-  }
-});
-
-app.delete('/api/configurations/:id', async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ message: 'Identificador inválido.' });
-  }
-  try {
-    const configs = await readConfigurations();
-    const filtered = configs.filter((item) => item.id !== id);
-    if (filtered.length === configs.length) {
-      return res.status(404).json({ message: 'Configuração não encontrada.' });
-    }
-    await writeConfigurations(filtered);
-    res.status(204).end();
-  } catch (error) {
-    console.error('Erro ao remover configuração.', error);
-    res.status(500).json({ message: 'Não foi possível remover a configuração.' });
-  }
-});
-
-app.use(express.static(path.join(__dirname)));
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 ensureDataFile()
   .then(() => {
-    app.listen(port, () => {
-      console.log(`Servidor iniciado na porta ${port}`);
+    server.listen(PORT, () => {
+      console.log(`Servidor iniciado na porta ${PORT}`);
     });
   })
   .catch((error) => {

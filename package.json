@@ -5,8 +5,5 @@
   "description": "Mapa de horários acadêmicos com persistência no servidor",
   "scripts": {
     "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.19.2"
   }
 }

@@ -18,8 +18,8 @@ O cronograma em edição continua sendo preservado automaticamente no armazename
 
 ## Executando o servidor
 
-1. Instale as dependências com `npm install`.
-2. Inicie a aplicação com `npm start`. O servidor Express disponibiliza a interface web e os endpoints REST em `http://localhost:3000`.
+1. Com o Node.js instalado, execute `npm start` na pasta do projeto. O servidor integrado não possui dependências externas e inicializa diretamente com `node server.js`.
+2. A interface web e os endpoints REST ficam disponíveis em `http://localhost:3000`.
 3. Os cronogramas nomeados são gravados no arquivo `data/configurations.json` (criado automaticamente caso não exista). É possível fazer backup manual deste arquivo ou versioná-lo de acordo com a sua necessidade.
 
 ### Persistência de dados
