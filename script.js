@@ -199,6 +199,25 @@ const days = [
   { key: 'saturday', label: 'Sábado' }
 ];
 
+const defaultDayShortLabels = {
+  monday: 'Seg',
+  tuesday: 'Ter',
+  wednesday: 'Qua',
+  thursday: 'Qui',
+  friday: 'Sex',
+  saturday: 'Sáb'
+};
+
+const dayLabelMap = days.reduce((acc, day) => {
+  acc[day.key] = day.label;
+  return acc;
+}, {});
+
+const dayShortLabelMap = days.reduce((acc, day) => {
+  acc[day.key] = defaultDayShortLabels[day.key] || day.label.slice(0, 3);
+  return acc;
+}, {});
+
 const dayOrder = days.reduce((acc, day, index) => {
   acc[day.key] = index;
   return acc;
@@ -243,16 +262,49 @@ const sessions = [
   }
 ];
 
+function parseTimeToMinutes(value) {
+  if (!value) return NaN;
+  const [hoursStr, minutesStr] = value.split(':');
+  const hours = Number.parseInt(hoursStr, 10);
+  const minutes = Number.parseInt(minutesStr, 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return NaN;
+  }
+  return hours * 60 + minutes;
+}
+
+function computeDurationFromRange(range) {
+  if (!range) return 0;
+  const [start, end] = range.split('-').map((part) => part.trim());
+  if (!start || !end) return 0;
+  const startMinutes = parseTimeToMinutes(start);
+  const endMinutes = parseTimeToMinutes(end);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+    return 0;
+  }
+  let duration = endMinutes - startMinutes;
+  if (duration <= 0) {
+    duration += 24 * 60;
+  }
+  return duration;
+}
+
 const slotDictionary = sessions.reduce((acc, session, sessionIndex) => {
   session.slots.forEach((slot, slotIndex) => {
     acc[slot.code] = {
       ...slot,
       sessionName: session.name,
-      order: sessionIndex * 10 + slotIndex
+      order: sessionIndex * 10 + slotIndex,
+      durationMinutes: computeDurationFromRange(slot.time)
     };
   });
   return acc;
 }, {});
+
+const fallbackSlotDurationMinutes = 50;
+
+const slotsPerDay = sessions.reduce((total, session) => total + session.slots.length, 0);
+const totalWeeklySlots = slotsPerDay * days.length;
 
 const entityCollections = {
   period: 'periods',
@@ -294,6 +346,7 @@ const elements = {
   selectionSummary: document.getElementById('selection-summary'),
   editSelection: document.getElementById('edit-selection'),
   clearSelection: document.getElementById('clear-selection'),
+  viewSummary: document.getElementById('view-summary'),
   modal: document.getElementById('assignment-modal'),
   modalClose: document.querySelector('.modal-close'),
   assignmentForm: document.getElementById('assignment-form'),
@@ -1277,6 +1330,30 @@ function parseSlotKey(key) {
   return { dayKey, slotCode };
 }
 
+function getDayLabel(dayKey) {
+  return dayLabelMap[dayKey] || dayKey;
+}
+
+function getDayShortLabel(dayKey) {
+  return dayShortLabelMap[dayKey] || getDayLabel(dayKey);
+}
+
+function formatCompactSlotLabel(dayKey, slotCode) {
+  return `${getDayShortLabel(dayKey)} ${slotCode}`;
+}
+
+function getSlotDurationMinutes(slotCode) {
+  const info = slotDictionary[slotCode];
+  if (!info) {
+    return fallbackSlotDurationMinutes;
+  }
+  const { durationMinutes } = info;
+  if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+    return durationMinutes;
+  }
+  return fallbackSlotDurationMinutes;
+}
+
 function formatSlotLabel(dayKey, slotCode) {
   const day = days.find((d) => d.key === dayKey);
   const slotInfo = slotDictionary[slotCode];
@@ -1505,7 +1582,9 @@ function renderSchedule() {
   const { scheduleContainer } = elements;
   scheduleContainer.innerHTML = '';
   if (!state.selectedEntity) {
+    renderViewSummary();
     scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
+    updateSelectionUI();
     return;
   }
 
@@ -1574,10 +1653,431 @@ function renderSchedule() {
       tbody.appendChild(row);
     });
   });
-
+  
   table.appendChild(tbody);
   scheduleContainer.appendChild(table);
   updateSelectionUI();
+  renderViewSummary();
+}
+
+function compareSlotPosition(a, b) {
+  const dayDiff = (dayOrder[a.dayKey] ?? 0) - (dayOrder[b.dayKey] ?? 0);
+  if (dayDiff !== 0) return dayDiff;
+  const orderA = slotDictionary[a.slotCode]?.order ?? 0;
+  const orderB = slotDictionary[b.slotCode]?.order ?? 0;
+  return orderA - orderB;
+}
+
+function formatDurationMinutes(totalMinutes) {
+  const minutes = Math.max(Math.round(totalMinutes), 0);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const parts = [];
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (remainder > 0) {
+    parts.push(`${remainder}min`);
+  }
+  if (!parts.length) {
+    parts.push('0min');
+  }
+  return parts.join(' ');
+}
+
+function formatPercentage(value) {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  const rounded = Math.round(value * 10) / 10;
+  const fractionDigits = Number.isInteger(rounded) ? 0 : 1;
+  return rounded.toLocaleString('pt-BR', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  });
+}
+
+function createSummaryPlaceholder(text) {
+  const paragraph = document.createElement('p');
+  paragraph.className = 'summary-placeholder';
+  paragraph.textContent = text;
+  return paragraph;
+}
+
+function renderViewSummary() {
+  const container = elements.viewSummary;
+  if (!container) return;
+  container.innerHTML = '';
+  container.classList.remove('has-content', 'is-empty');
+
+  if (!state.selectedEntity) {
+    container.classList.add('is-empty');
+    container.appendChild(
+      createSummaryPlaceholder('Selecione um item para visualizar detalhes da agenda.')
+    );
+    return;
+  }
+
+  let fragment = null;
+  if (state.view === 'period') {
+    fragment = buildPeriodSummary(state.selectedEntity);
+  } else if (state.view === 'professor') {
+    fragment = buildProfessorSummary(state.selectedEntity);
+  } else if (state.view === 'room') {
+    fragment = buildRoomSummary(state.selectedEntity);
+  }
+
+  if (fragment) {
+    container.classList.add('has-content');
+    container.appendChild(fragment);
+  } else {
+    container.classList.add('is-empty');
+    container.appendChild(createSummaryPlaceholder('Nenhum dado disponível para esta visualização.'));
+  }
+}
+
+function buildPeriodSummary(periodId) {
+  const period = getPeriodById(periodId);
+  if (!period) return null;
+
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement('h3');
+  title.className = 'summary-title';
+  title.textContent = `Disciplinas de ${period.name}`;
+  fragment.appendChild(title);
+
+  const disciplines = state.disciplines.filter((discipline) => discipline.periodId === periodId);
+  if (!disciplines.length) {
+    fragment.appendChild(createSummaryPlaceholder('Nenhuma disciplina cadastrada para este período.'));
+    return fragment;
+  }
+
+  const schedule = state.schedule[periodId] || {};
+  const disciplineData = new Map();
+  Object.entries(schedule).forEach(([key, entry]) => {
+    if (!entry || !entry.disciplineId) return;
+    const { dayKey, slotCode } = parseSlotKey(key);
+    const record = disciplineData.get(entry.disciplineId) || {
+      slots: [],
+      professors: new Set()
+    };
+    record.slots.push({ dayKey, slotCode });
+    if (entry.professorId) {
+      record.professors.add(entry.professorId);
+    }
+    disciplineData.set(entry.disciplineId, record);
+  });
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+
+  const sorted = [...disciplines];
+  sorted.sort((a, b) => compareEntities('discipline', a, b));
+
+  sorted.forEach((discipline) => {
+    const item = document.createElement('li');
+    item.className = 'summary-item';
+    const usage = latestDisciplineUsage?.[discipline.id];
+    if (usage && usage.required > 0) {
+      if (usage.missing > 0) {
+        item.classList.add('discipline-underloaded');
+      } else if (usage.excess > 0) {
+        item.classList.add('discipline-overloaded');
+      } else {
+        item.classList.add('discipline-balanced');
+      }
+    }
+
+    const header = document.createElement('div');
+    header.className = 'summary-item-header';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'summary-item-title';
+    titleSpan.textContent = formatDisciplineLabel(discipline);
+    header.appendChild(titleSpan);
+
+    if (usage && usage.required > 0) {
+      const status = document.createElement('span');
+      status.className = 'summary-status';
+      if (usage.missing > 0) {
+        status.dataset.status = 'warning';
+        status.textContent = `Faltam ${usage.missing} de ${usage.required}`;
+      } else if (usage.excess > 0) {
+        status.dataset.status = 'danger';
+        status.textContent = `Excedente de ${usage.excess} (meta ${usage.required})`;
+      } else {
+        status.dataset.status = 'success';
+        status.textContent = `Meta: ${usage.required} horário${
+          usage.required > 1 ? 's' : ''
+        }`;
+      }
+      header.appendChild(status);
+    }
+
+    item.appendChild(header);
+
+    const details = document.createElement('div');
+    details.className = 'summary-item-details';
+
+    const record = disciplineData.get(discipline.id) || { slots: [], professors: new Set() };
+    const professorNames = Array.from(record.professors)
+      .map((id) => getProfessorById(id)?.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+
+    const professorsLine = document.createElement('p');
+    professorsLine.className = 'summary-line';
+    professorsLine.innerHTML = `<strong>Professores:</strong> ${
+      professorNames.length ? professorNames.join(', ') : 'Não definidos'
+    }`;
+    details.appendChild(professorsLine);
+
+    const slots = record.slots.slice().sort(compareSlotPosition);
+    const slotLabels = slots.map(({ dayKey, slotCode }) => formatCompactSlotLabel(dayKey, slotCode));
+    const slotLine = document.createElement('p');
+    slotLine.className = 'summary-line';
+    slotLine.innerHTML = slotLabels.length
+      ? `<strong>Horários (${slotLabels.length}):</strong> ${slotLabels.join(', ')}`
+      : '<strong>Horários:</strong> Sem atribuições.';
+    details.appendChild(slotLine);
+
+    item.appendChild(details);
+    list.appendChild(item);
+  });
+
+  fragment.appendChild(list);
+  return fragment;
+}
+
+function buildProfessorSummary(professorId) {
+  const professor = getProfessorById(professorId);
+  if (!professor) return null;
+
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement('h3');
+  title.className = 'summary-title';
+  title.textContent = professor.name;
+  fragment.appendChild(title);
+
+  if (professor.isCourseArea) {
+    const badge = document.createElement('p');
+    badge.className = 'summary-meta';
+    badge.textContent = 'Professor da área do curso';
+    fragment.appendChild(badge);
+  }
+
+  const assignments = [];
+  Object.entries(state.schedule).forEach(([periodId, slots]) => {
+    Object.entries(slots).forEach(([key, entry]) => {
+      if (entry?.professorId === professorId) {
+        const { dayKey, slotCode } = parseSlotKey(key);
+        assignments.push({ periodId, entry, dayKey, slotCode });
+      }
+    });
+  });
+
+  const classCount = assignments.length;
+  const totalMinutes = assignments.reduce(
+    (sum, assignment) => sum + getSlotDurationMinutes(assignment.slotCode),
+    0
+  );
+
+  const totals = document.createElement('p');
+  totals.className = 'summary-highlight';
+  totals.innerHTML = `<strong>Aulas:</strong> ${classCount} • <strong>Horas:</strong> ${formatDurationMinutes(
+    totalMinutes
+  )}`;
+  fragment.appendChild(totals);
+
+  const linkedLabels = getProfessorDisciplineLabels(professor);
+  const linkedLine = document.createElement('p');
+  linkedLine.className = 'summary-line';
+  linkedLine.innerHTML = `<strong>Disciplinas vinculadas:</strong> ${
+    linkedLabels.length ? linkedLabels.join(', ') : 'Nenhuma disciplina vinculada'
+  }`;
+  fragment.appendChild(linkedLine);
+
+  if (!assignments.length) {
+    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este professor.'));
+    return fragment;
+  }
+
+  const disciplineMap = new Map();
+  assignments.forEach((item) => {
+    const discipline = getDisciplineById(item.entry.disciplineId);
+    if (!discipline) return;
+    let summary = disciplineMap.get(discipline.id);
+    if (!summary) {
+      summary = {
+        discipline,
+        count: 0,
+        periods: new Set(),
+        slots: []
+      };
+      disciplineMap.set(discipline.id, summary);
+    }
+    summary.count += 1;
+    summary.periods.add(item.periodId);
+    summary.slots.push({ dayKey: item.dayKey, slotCode: item.slotCode });
+  });
+
+  if (!disciplineMap.size) {
+    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este professor.'));
+    return fragment;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+
+  const sorted = Array.from(disciplineMap.values());
+  sorted.sort((a, b) => compareEntities('discipline', a.discipline, b.discipline));
+
+  sorted.forEach((record) => {
+    const item = document.createElement('li');
+    item.className = 'summary-item';
+
+    const header = document.createElement('div');
+    header.className = 'summary-item-header';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'summary-item-title';
+    titleSpan.textContent = formatDisciplineLabel(record.discipline);
+    header.appendChild(titleSpan);
+
+    const status = document.createElement('span');
+    status.className = 'summary-status';
+    status.dataset.status = 'info';
+    status.textContent = `${record.count} horário${record.count > 1 ? 's' : ''}`;
+    header.appendChild(status);
+
+    item.appendChild(header);
+
+    const details = document.createElement('div');
+    details.className = 'summary-item-details';
+
+    const periods = Array.from(record.periods)
+      .map((id) => getPeriodById(id)?.name || id)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    if (periods.length) {
+      const periodLine = document.createElement('p');
+      periodLine.className = 'summary-line';
+      periodLine.innerHTML = `<strong>Períodos:</strong> ${periods.join(', ')}`;
+      details.appendChild(periodLine);
+    }
+
+    const slotLabels = record.slots
+      .sort(compareSlotPosition)
+      .map((slot) => formatCompactSlotLabel(slot.dayKey, slot.slotCode));
+    const slotLine = document.createElement('p');
+    slotLine.className = 'summary-line';
+    slotLine.innerHTML = slotLabels.length
+      ? `<strong>Horários:</strong> ${slotLabels.join(', ')}`
+      : '<strong>Horários:</strong> Sem horários atribuídos.';
+    details.appendChild(slotLine);
+
+    item.appendChild(details);
+    list.appendChild(item);
+  });
+
+  fragment.appendChild(list);
+  return fragment;
+}
+
+function buildRoomSummary(roomId) {
+  const room = getRoomById(roomId);
+  if (!room) return null;
+
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement('h3');
+  title.className = 'summary-title';
+  title.textContent = `Sala ${room.name}`;
+  fragment.appendChild(title);
+
+  const slotGroups = new Map();
+  Object.entries(state.schedule).forEach(([periodId, slots]) => {
+    Object.entries(slots).forEach(([key, entry]) => {
+      if (entry?.roomId !== roomId) return;
+      const { dayKey, slotCode } = parseSlotKey(key);
+      let group = slotGroups.get(key);
+      if (!group) {
+        group = { dayKey, slotCode, entries: [] };
+        slotGroups.set(key, group);
+      }
+      group.entries.push({ periodId, entry });
+    });
+  });
+
+  const usedSlots = slotGroups.size;
+  const occupancyPercent = totalWeeklySlots > 0 ? (usedSlots / totalWeeklySlots) * 100 : 0;
+  const highlight = document.createElement('p');
+  highlight.className = 'summary-highlight';
+  highlight.innerHTML = `<strong>Ocupação:</strong> ${usedSlots} de ${totalWeeklySlots} horário${
+    totalWeeklySlots === 1 ? '' : 's'
+  } (${formatPercentage(occupancyPercent)}%)`;
+  fragment.appendChild(highlight);
+
+  if (!slotGroups.size) {
+    fragment.appendChild(createSummaryPlaceholder('Nenhum horário reservado para esta sala.'));
+    return fragment;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+
+  const sorted = Array.from(slotGroups.values());
+  sorted.sort((a, b) => compareSlotPosition(a, b));
+
+  sorted.forEach((group) => {
+    const item = document.createElement('li');
+    item.className = 'summary-item';
+
+    const header = document.createElement('div');
+    header.className = 'summary-item-header';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'summary-item-title';
+    titleSpan.textContent = formatCompactSlotLabel(group.dayKey, group.slotCode);
+    header.appendChild(titleSpan);
+
+    if (group.entries.length > 1) {
+      const warning = document.createElement('span');
+      warning.className = 'summary-status';
+      warning.dataset.status = 'danger';
+      warning.textContent = `${group.entries.length} reservas`;
+      header.appendChild(warning);
+    }
+
+    item.appendChild(header);
+
+    const details = document.createElement('div');
+    details.className = 'summary-item-details';
+    group.entries.forEach(({ periodId, entry }) => {
+      const discipline = getDisciplineById(entry.disciplineId);
+      const period = getPeriodById(periodId);
+      const professor = getProfessorById(entry.professorId);
+      const line = document.createElement('p');
+      line.className = 'summary-line';
+      const parts = [];
+      if (discipline) {
+        parts.push(formatDisciplineLabel(discipline));
+      }
+      if (period) {
+        parts.push(`Período: ${period.name}`);
+      }
+      if (professor) {
+        parts.push(`Professor: ${professor.name}`);
+      }
+      if (!parts.length) {
+        parts.push('Reserva sem detalhes cadastrados.');
+      }
+      line.textContent = parts.join(' • ');
+      details.appendChild(line);
+    });
+
+    item.appendChild(details);
+    list.appendChild(item);
+  });
+
+  fragment.appendChild(list);
+  return fragment;
 }
 
 function openAssignmentModalForSlots(slotsInput) {
