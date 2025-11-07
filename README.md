@@ -9,7 +9,7 @@ Aplicação front-end simples para construir cronogramas semanais de cursos.
 3. Ao cadastrar disciplinas é possível informar um código opcional, que é validado para evitar duplicidade. Cada disciplina recebe automaticamente uma cor que é reaproveitada nas células do cronograma para facilitar a identificação visual.
 4. Defina também, se desejar, a quantidade prevista de horários para cada disciplina. A lista de disciplinas destaca cargas pendentes ou excedentes e as células excedentes do mapa recebem um alerta visual.
 5. No cadastro de professores você pode, opcionalmente, vincular um docente a várias disciplinas utilizando o seletor com os botões **+** e **−**, além de marcar se ele pertence à área específica do curso. Essas informações alimentam as sugestões exibidas no modal de atribuição, mas continuam totalmente opcionais para manter flexibilidade.
-6. Use o painel de visualização para escolher a visão (por período, professor ou sala) e o item desejado. Logo abaixo dos filtros o resumo contextual apresenta dados da seleção atual:
+6. Use a barra lateral de visualização para escolher a visão (por período, professor ou sala) e o item desejado. O painel de resumo acima da grade apresenta dados da seleção atual:
    * **Período** – lista todas as disciplinas daquele período com os professores atribuídos, horários no formato M1, M2, etc., e o status da carga prevista (faltando, completa ou excedida).
    * **Professor** – informa o total de aulas e de horas configuradas, destaca as disciplinas vinculadas e detalha em quais períodos e horários o docente está alocado.
    * **Sala** – mostra a porcentagem de ocupação semanal da sala e todas as reservas agrupadas por horário, identificando rapidamente eventuais conflitos no mesmo bloco.

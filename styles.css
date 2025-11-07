@@ -506,6 +506,43 @@ button.primary:hover {
   gap: 1.5rem;
 }
 
+.schedule-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.schedule-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1 1 auto;
+}
+
+.schedule-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.schedule-title.is-muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+@media (min-width: 1100px) {
+  .schedule-layout {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .control-sidebar {
+    flex: 0 0 clamp(260px, 24vw, 320px);
+    width: clamp(260px, 24vw, 320px);
+  }
+}
+
 .view-panel {
   background: var(--panel-bg);
   border-radius: 16px;
@@ -526,6 +563,8 @@ button.primary:hover {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 .view-controls {
@@ -794,6 +833,7 @@ button.primary:hover {
   padding: 1.25rem 1.5rem;
   box-shadow: 0 12px 24px rgba(31, 45, 61, 0.08);
   overflow-x: auto;
+  flex: 1 1 auto;
 }
 
 .schedule-container .placeholder {

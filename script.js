@@ -342,6 +342,7 @@ const elements = {
   viewTypeSelect: document.getElementById('view-type'),
   entitySelector: document.getElementById('entity-selector'),
   scheduleContainer: document.getElementById('schedule-container'),
+  scheduleTitle: document.getElementById('schedule-title'),
   toggleMultiSelect: document.getElementById('toggle-multi-select'),
   selectionSummary: document.getElementById('selection-summary'),
   editSelection: document.getElementById('edit-selection'),
@@ -476,6 +477,42 @@ function sortAllCollections() {
   sortStateCollection('professor');
   sortStateCollection('room');
   sortStateCollection('discipline');
+}
+
+function buildScheduleHeading() {
+  if (!state.selectedEntity) {
+    return 'Selecione um item para visualizar o cronograma';
+  }
+
+  if (state.view === 'period') {
+    const period = getPeriodById(state.selectedEntity);
+    if (period) {
+      return `Cronograma do período ${period.name}`;
+    }
+  } else if (state.view === 'professor') {
+    const professor = getProfessorById(state.selectedEntity);
+    if (professor) {
+      return `Cronograma do professor ${professor.name}`;
+    }
+  } else if (state.view === 'room') {
+    const room = getRoomById(state.selectedEntity);
+    if (room) {
+      return `Cronograma da sala ${room.name}`;
+    }
+  }
+
+  return 'Cronograma selecionado';
+}
+
+function updateScheduleTitle() {
+  const { scheduleTitle } = elements;
+  if (!scheduleTitle) return;
+
+  const heading = buildScheduleHeading();
+  scheduleTitle.textContent = heading;
+
+  const isPlaceholder = !state.selectedEntity;
+  scheduleTitle.classList.toggle('is-muted', isPlaceholder);
 }
 
 function isDuplicateDisciplineCode(code, ignoreId = null) {
@@ -1581,6 +1618,7 @@ function getCellAssignments(view, entityId, dayKey, slotCode) {
 function renderSchedule() {
   const { scheduleContainer } = elements;
   scheduleContainer.innerHTML = '';
+  updateScheduleTitle();
   if (!state.selectedEntity) {
     renderViewSummary();
     scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
