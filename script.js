@@ -466,6 +466,41 @@ const elements = {
   storageFeedback: document.getElementById('storage-feedback')
 };
 
+function clearRelatedHighlights() {
+  const { scheduleContainer } = elements;
+  if (!scheduleContainer) return;
+  scheduleContainer
+    .querySelectorAll('.slot-cell.is-related-origin, .slot-cell.is-related-match')
+    .forEach((cell) => {
+      cell.classList.remove('is-related-origin', 'is-related-match');
+    });
+}
+
+function highlightRelatedDisciplines(disciplineIds, originCell) {
+  if (!Array.isArray(disciplineIds) || disciplineIds.length === 0) {
+    clearRelatedHighlights();
+    return;
+  }
+  const { scheduleContainer } = elements;
+  if (!scheduleContainer) return;
+  const idSet = new Set(disciplineIds);
+  clearRelatedHighlights();
+  scheduleContainer.querySelectorAll('.slot-cell[data-discipline-ids]').forEach((cell) => {
+    const ids = cell.dataset.disciplineIds
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!ids?.length) return;
+    if (ids.some((id) => idSet.has(id))) {
+      if (cell === originCell) {
+        cell.classList.add('is-related-origin');
+      } else {
+        cell.classList.add('is-related-match');
+      }
+    }
+  });
+}
+
 const menuButtons = Array.from(elements.menuButtons || []);
 const panelSections = Array.from(elements.panelSections || []);
 
@@ -1962,6 +1997,7 @@ function handleSlotClick(button, dayKey, slotCode) {
     toggleSlotSelection(dayKey, slotCode, button);
     return;
   }
+  clearRelatedHighlights();
   openAssignmentModalForSlots([{ dayKey, slotCode }]);
 }
 
@@ -2233,6 +2269,7 @@ function performSlotDrop(context, targetInfo) {
 
 function setupSlotDrag(button, dayKey, slotCode) {
   if (!button) return;
+  button.addEventListener('pointerdown', clearRelatedHighlights);
   button.addEventListener('pointerdown', (event) => onSlotPointerDown(event, button, dayKey, slotCode));
 }
 
@@ -2402,6 +2439,7 @@ function getDraggableAssignmentInfo(assignments) {
 
 function renderSchedule() {
   const { scheduleContainer } = elements;
+  clearRelatedHighlights();
   scheduleContainer.innerHTML = '';
   updateScheduleTitle();
   if (!state.selectedEntity) {
@@ -2454,6 +2492,20 @@ function renderSchedule() {
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
         const draggableInfo = getDraggableAssignmentInfo(assignments);
         const cellContent = buildCellContent(assignments);
+        const disciplineIds = assignments
+          .map((entry) => entry?.data?.disciplineId)
+          .filter(Boolean);
+        const uniqueDisciplineIds = [...new Set(disciplineIds)];
+        if (uniqueDisciplineIds.length) {
+          button.dataset.disciplineIds = uniqueDisciplineIds.join(',');
+          const handleHighlight = () => highlightRelatedDisciplines(uniqueDisciplineIds, button);
+          button.addEventListener('mouseenter', handleHighlight);
+          button.addEventListener('focus', handleHighlight);
+          button.addEventListener('mouseleave', clearRelatedHighlights);
+          button.addEventListener('blur', clearRelatedHighlights);
+        } else {
+          delete button.dataset.disciplineIds;
+        }
         button.innerHTML = cellContent.html;
         if (cellContent.errors.length) {
           button.classList.add('has-error');

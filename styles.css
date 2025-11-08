@@ -82,6 +82,7 @@ main {
   padding-right: 0.25rem;
   width: var(--rail-collapsed);
   min-width: var(--rail-collapsed);
+  z-index: 12;
 }
 
 .sidebar-column > * {
@@ -100,7 +101,7 @@ main {
   transition: width 0.25s ease, box-shadow 0.25s ease;
   overflow: hidden;
   position: relative;
-  z-index: 6;
+  z-index: 18;
 }
 
 .entity-menu:hover,
@@ -668,7 +669,7 @@ button.primary:hover {
   transition: width 0.25s ease, padding 0.25s ease;
   overflow: hidden;
   position: relative;
-  z-index: 6;
+  z-index: 20;
 }
 
 .control-sidebar .rail-icon {
@@ -1073,6 +1074,7 @@ button.primary:hover {
   flex-direction: column;
   justify-content: space-between;
   position: relative;
+  overflow: hidden;
 }
 
 .slot-cell.has-error {
@@ -1104,6 +1106,26 @@ button.primary:hover {
 
 .slot-cell:hover {
   background: rgba(41, 98, 255, 0.08);
+}
+
+.slot-cell.is-related-match::before,
+.slot-cell.is-related-origin::before {
+  content: '';
+  position: absolute;
+  inset: 0.4rem;
+  border-radius: 12px;
+  pointer-events: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.slot-cell.is-related-match::before {
+  background: rgba(41, 98, 255, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(41, 98, 255, 0.35);
+}
+
+.slot-cell.is-related-origin::before {
+  background: rgba(41, 98, 255, 0.18);
+  box-shadow: inset 0 0 0 2px rgba(41, 98, 255, 0.55);
 }
 
 .slot-cell.is-draggable {

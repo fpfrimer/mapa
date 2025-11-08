@@ -13,6 +13,60 @@
 
   <main>
     <div class="sidebar-column">
+      <div
+        class="control-sidebar"
+        aria-label="Controles da grade de horários"
+        title="Painel de visualização e seleção"
+        tabindex="0"
+      >
+        <div class="rail-icon" aria-hidden="true">🎛️</div>
+        <div class="rail-content">
+          <div class="view-controls">
+            <div class="control-group">
+              <label for="view-type">Visualizar por:</label>
+              <select id="view-type">
+                <option value="period">Período</option>
+                <option value="professor">Docente</option>
+                <option value="room">Sala</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="entity-selector-search">Selecionar:</label>
+              <div class="searchable-select" data-select="entity-selector">
+                <div class="searchable-input-wrapper">
+                  <input
+                    type="search"
+                    id="entity-selector-search"
+                    class="searchable-input"
+                    placeholder="Buscar item"
+                    autocomplete="off"
+                  />
+                  <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                </div>
+                <ul class="searchable-options" role="listbox"></ul>
+              </div>
+              <select id="entity-selector" class="searchable-native">
+                <option value=""></option>
+              </select>
+            </div>
+          </div>
+
+          <div class="selection-tools" aria-live="polite">
+            <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
+              Ativar seleção múltipla
+            </button>
+            <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
+            <div class="selection-actions">
+              <button type="button" id="edit-selection" disabled>Editar seleção</button>
+              <button type="button" id="clear-selection" disabled>Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <nav class="entity-menu" aria-label="Gerenciar cadastros">
         <button
           type="button"
@@ -75,60 +129,6 @@
           <span class="label">Configurações</span>
         </button>
       </nav>
-
-      <div
-        class="control-sidebar"
-        aria-label="Controles da grade de horários"
-        title="Painel de visualização e seleção"
-        tabindex="0"
-      >
-        <div class="rail-icon" aria-hidden="true">🎛️</div>
-        <div class="rail-content">
-          <div class="view-controls">
-            <div class="control-group">
-              <label for="view-type">Visualizar por:</label>
-              <select id="view-type">
-                <option value="period">Período</option>
-                <option value="professor">Docente</option>
-                <option value="room">Sala</option>
-              </select>
-            </div>
-
-            <div class="control-group">
-              <label for="entity-selector-search">Selecionar:</label>
-              <div class="searchable-select" data-select="entity-selector">
-                <div class="searchable-input-wrapper">
-                  <input
-                    type="search"
-                    id="entity-selector-search"
-                    class="searchable-input"
-                    placeholder="Buscar item"
-                    autocomplete="off"
-                  />
-                  <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                    <span aria-hidden="true">▾</span>
-                  </button>
-                </div>
-                <ul class="searchable-options" role="listbox"></ul>
-              </div>
-              <select id="entity-selector" class="searchable-native">
-                <option value=""></option>
-              </select>
-            </div>
-          </div>
-
-          <div class="selection-tools" aria-live="polite">
-            <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
-              Ativar seleção múltipla
-            </button>
-            <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
-            <div class="selection-actions">
-              <button type="button" id="edit-selection" disabled>Editar seleção</button>
-              <button type="button" id="clear-selection" disabled>Limpar</button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <section class="schedule-panel">
