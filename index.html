@@ -20,7 +20,7 @@
         </button>
         <button type="button" class="menu-button" data-panel="professors" aria-controls="panel-professors" aria-expanded="false">
           <span class="icon" aria-hidden="true">👩‍🏫</span>
-          <span class="label">Professores</span>
+          <span class="label">Docentes</span>
         </button>
         <button type="button" class="menu-button" data-panel="rooms" aria-controls="panel-rooms" aria-expanded="false">
           <span class="icon" aria-hidden="true">🏫</span>
@@ -42,15 +42,30 @@
             <label for="view-type">Visualizar por:</label>
             <select id="view-type">
               <option value="period">Período</option>
-              <option value="professor">Professor</option>
+              <option value="professor">Docente</option>
               <option value="room">Sala</option>
             </select>
           </div>
 
           <div class="control-group">
-            <label for="entity-selector">Selecionar:</label>
-            <select id="entity-selector">
-              <option value="">Escolha um item</option>
+            <label for="entity-selector-search">Selecionar:</label>
+            <div class="searchable-select" data-select="entity-selector">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="entity-selector-search"
+                  class="searchable-input"
+                  placeholder="Buscar item"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
+            </div>
+            <select id="entity-selector" class="searchable-native">
+              <option value=""></option>
             </select>
           </div>
         </div>
@@ -102,10 +117,10 @@
         </div>
       </section>
 
-      <section id="panel-professors" class="panel-section" data-panel="professors" data-title="Professores" hidden>
-        <h3 class="visually-hidden">Professores</h3>
+      <section id="panel-professors" class="panel-section" data-panel="professors" data-title="Docentes" hidden>
+        <h3 class="visually-hidden">Docentes</h3>
         <form id="professor-form" class="inline-form professor-form">
-          <input type="text" id="professor-name" placeholder="Nome do professor" required />
+          <input type="text" id="professor-name" placeholder="Nome do docente" required />
           <div class="professor-discipline-field">
             <div class="discipline-picker-control">
               <select id="professor-discipline">
@@ -125,12 +140,12 @@
           </div>
           <label class="checkbox-field">
             <input type="checkbox" id="professor-area" />
-            <span>Professor da área do curso</span>
+            <span>Docente da área do curso</span>
           </label>
           <button type="submit">Adicionar</button>
         </form>
         <div class="list-tools">
-          <input type="search" id="professor-search" placeholder="Buscar professores" aria-label="Buscar professores" />
+          <input type="search" id="professor-search" placeholder="Buscar docentes" aria-label="Buscar docentes" />
         </div>
         <div class="list-container">
           <ul id="professor-list" class="entity-list"></ul>
@@ -270,17 +285,17 @@
             <select id="assignment-period" required class="searchable-native"></select>
           </div>
           <div class="form-field">
-            <label for="assignment-professor-search">Professor</label>
+            <label for="assignment-professor-search">Docente</label>
             <div class="searchable-select" data-select="assignment-professor">
               <div class="searchable-input-wrapper">
                 <input
                   type="search"
                   id="assignment-professor-search"
                   class="searchable-input"
-                  placeholder="Buscar professor"
+                  placeholder="Buscar docente"
                   autocomplete="off"
                 />
-                <button type="button" class="searchable-toggle" aria-label="Exibir professores">
+                <button type="button" class="searchable-toggle" aria-label="Exibir docentes">
                   <span aria-hidden="true">▾</span>
                 </button>
               </div>

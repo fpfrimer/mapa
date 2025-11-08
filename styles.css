@@ -741,6 +741,10 @@ button.primary:hover {
   font-size: 0.95rem;
 }
 
+.control-group .searchable-select {
+  min-width: 200px;
+}
+
 .view-summary {
   border-top: 1px dashed rgba(31, 45, 61, 0.16);
   padding-top: 1rem;
@@ -1193,6 +1197,23 @@ button.primary:hover {
   color: var(--muted);
 }
 
+.searchable-select.is-disabled .searchable-input-wrapper {
+  background: rgba(31, 45, 61, 0.06);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.searchable-select.is-disabled .searchable-input {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.searchable-select.is-disabled .searchable-toggle {
+  color: var(--muted);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .searchable-toggle {
   border: none;
   background: transparent;
@@ -1431,7 +1452,7 @@ button.primary:hover {
   color: #2e7d32;
 }
 
-.badge.professor {
+.badge.docente {
   background: rgba(255, 152, 0, 0.18);
   color: #ef6c00;
 }

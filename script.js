@@ -547,6 +547,7 @@ class SearchableDropdown {
 
     this.attachEvents();
     this.syncOptions();
+    this.updateDisabledState();
   }
 
   attachEvents() {
@@ -666,6 +667,7 @@ class SearchableDropdown {
       }
     }
     this.refreshInputDisplay();
+    this.updateDisabledState();
   }
 
   refreshInputDisplay() {
@@ -719,7 +721,7 @@ class SearchableDropdown {
       if (index === this.highlightedIndex) item.classList.add('is-highlighted');
       item.setAttribute('role', 'option');
       item.dataset.value = option.value;
-      item.textContent = option.label || 'Selecione';
+      item.textContent = option.label || '';
       item.addEventListener('mousedown', (event) => {
         event.preventDefault();
         if (option.disabled) return;
@@ -795,6 +797,30 @@ class SearchableDropdown {
     this.select.value = value || '';
     this.updateFromSelect();
   }
+
+  updateDisabledState() {
+    const disabled = Boolean(this.select?.disabled);
+    if (!this.container) return;
+    if (disabled) {
+      this.close();
+    }
+    this.container.classList.toggle('is-disabled', disabled);
+    if (this.input) {
+      this.input.disabled = disabled;
+      this.input.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    }
+    if (this.toggle) {
+      this.toggle.disabled = disabled;
+      this.toggle.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    }
+  }
+
+  setDisabled(disabled) {
+    if (this.select) {
+      this.select.disabled = Boolean(disabled);
+    }
+    this.updateDisabledState();
+  }
 }
 
 function registerSearchableDropdown(selectId, config = {}) {
@@ -821,6 +847,15 @@ function updateSearchableDropdownValue(selectElement, value) {
     dropdown.setValue(value || '');
   } else {
     selectElement.value = value || '';
+  }
+}
+
+function setSearchableDropdownDisabled(selectElement, disabled) {
+  if (!selectElement) return;
+  selectElement.disabled = Boolean(disabled);
+  const dropdown = searchableDropdowns.get(selectElement.id);
+  if (dropdown) {
+    dropdown.setDisabled(disabled);
   }
 }
 
@@ -910,7 +945,7 @@ function buildScheduleHeading() {
   } else if (state.view === 'professor') {
     const professor = getProfessorById(state.selectedEntity);
     if (professor) {
-      return `Cronograma do professor ${professor.name}`;
+      return `Cronograma do docente ${professor.name}`;
     }
   } else if (state.view === 'room') {
     const room = getRoomById(state.selectedEntity);
@@ -1094,7 +1129,7 @@ function renderEntityList(list, container, type) {
         areaCheckbox.checked = Boolean(item.isCourseArea);
         checkboxLabel.appendChild(areaCheckbox);
         const checkboxText = document.createElement('span');
-        checkboxText.textContent = 'Professor da área do curso';
+        checkboxText.textContent = 'Docente da área do curso';
         checkboxLabel.appendChild(checkboxText);
         form.appendChild(checkboxLabel);
       }
@@ -1764,7 +1799,7 @@ function updateProfessorDisciplineOptions() {
 
 function updateEntitySelector() {
   const { entitySelector } = elements;
-  entitySelector.innerHTML = '<option value="">Escolha um item</option>';
+  entitySelector.innerHTML = '<option value=""></option>';
   let source = [];
   if (state.view === 'period') source = state.periods;
   if (state.view === 'professor') source = state.professors;
@@ -1791,9 +1826,8 @@ function updateEntitySelector() {
   if (!state.selectedEntity) {
     clearSelectedSlots();
   }
-  if (state.selectedEntity) {
-    entitySelector.value = state.selectedEntity;
-  }
+  syncSearchableDropdownOptions(entitySelector);
+  updateSearchableDropdownValue(entitySelector, state.selectedEntity || '');
   renderSchedule();
 }
 
@@ -1983,10 +2017,10 @@ function collectAssignmentErrors(periodId, data) {
   }
 
   if (!professor) {
-    errors.push('Professor removido do cadastro.');
+    errors.push('Docente removido do cadastro.');
   } else if (discipline && !professorHasDiscipline(professor, discipline.id)) {
     const disciplineName = discipline?.name || 'esta disciplina';
-    errors.push(`Professor ${professor.name} não está vinculado a ${disciplineName}.`);
+    errors.push(`Docente ${professor.name} não está vinculado a ${disciplineName}.`);
   }
 
   if (!room) {
@@ -2021,7 +2055,7 @@ function buildCellContent(assignments) {
     if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
     if (period) lines.push(`<span class="badge period">${period.name}</span>`);
     if (professor) {
-      lines.push(`<span class="badge professor">${professor.name}</span>`);
+      lines.push(`<span class="badge docente">${professor.name}</span>`);
       if (professor.isCourseArea) {
         lines.push('<span class="badge area">Área do curso</span>');
       }
@@ -2343,7 +2377,7 @@ function buildPeriodSummary(periodId) {
 
     const professorsLine = document.createElement('p');
     professorsLine.className = 'summary-line';
-    professorsLine.innerHTML = `<strong>Professores:</strong> ${
+    professorsLine.innerHTML = `<strong>Docentes:</strong> ${
       professorNames.length ? professorNames.join(', ') : 'Não definidos'
     }`;
     details.appendChild(professorsLine);
@@ -2382,7 +2416,7 @@ function buildProfessorSummary(professorId) {
   if (professor.isCourseArea) {
     const badge = document.createElement('p');
     badge.className = 'summary-meta';
-    badge.textContent = 'Professor da área do curso';
+    badge.textContent = 'Docente da área do curso';
     fragment.appendChild(badge);
   }
 
@@ -2418,7 +2452,7 @@ function buildProfessorSummary(professorId) {
   fragment.appendChild(linkedLine);
 
   if (!assignments.length) {
-    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este professor.'));
+    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este docente.'));
     return fragment;
   }
 
@@ -2442,7 +2476,7 @@ function buildProfessorSummary(professorId) {
   });
 
   if (!disciplineMap.size) {
-    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este professor.'));
+    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este docente.'));
     return fragment;
   }
 
@@ -2588,7 +2622,7 @@ function buildRoomSummary(roomId) {
         parts.push(`Período: ${period.name}`);
       }
       if (professor) {
-        parts.push(`Professor: ${professor.name}`);
+        parts.push(`Docente: ${professor.name}`);
       }
       if (!parts.length) {
         parts.push('Reserva sem detalhes cadastrados.');
@@ -2720,24 +2754,24 @@ function openAssignmentModalForSlots(slotsInput) {
   prioritizeAssignmentDisciplines();
 
   if (state.view === 'period') {
-    elements.assignmentPeriod.disabled = true;
+    setSearchableDropdownDisabled(elements.assignmentPeriod, true);
     updateSearchableDropdownValue(elements.assignmentPeriod, state.selectedEntity);
   } else {
-    elements.assignmentPeriod.disabled = false;
+    setSearchableDropdownDisabled(elements.assignmentPeriod, false);
   }
 
   if (state.view === 'professor') {
-    elements.assignmentProfessor.disabled = true;
+    setSearchableDropdownDisabled(elements.assignmentProfessor, true);
     updateSearchableDropdownValue(elements.assignmentProfessor, state.selectedEntity);
   } else {
-    elements.assignmentProfessor.disabled = false;
+    setSearchableDropdownDisabled(elements.assignmentProfessor, false);
   }
 
   if (state.view === 'room') {
-    elements.assignmentRoom.disabled = true;
+    setSearchableDropdownDisabled(elements.assignmentRoom, true);
     updateSearchableDropdownValue(elements.assignmentRoom, state.selectedEntity);
   } else {
-    elements.assignmentRoom.disabled = false;
+    setSearchableDropdownDisabled(elements.assignmentRoom, false);
   }
 
   elements.removeAssignment.textContent = state.assignmentEditing.multi
@@ -2916,7 +2950,7 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
     if (entry.professorId === professorId) {
       const period = getPeriodById(pId);
       conflicts.push(
-        `Professor indisponível (compromisso no período ${period ? period.name : pId}).`
+        `Docente indisponível (compromisso no período ${period ? period.name : pId}).`
       );
     }
     if (entry.roomId === roomId) {
@@ -3047,7 +3081,7 @@ function updateSuggestions() {
     );
     if (recommendedProfessors.length) {
       suggestions.push(
-        `<span><strong>Professores vinculados à disciplina:</strong> ${recommendedProfessors
+        `<span><strong>Docentes vinculados à disciplina:</strong> ${recommendedProfessors
           .map((professor) => {
             const details = getProfessorDetailParts(professor);
             return details.length
@@ -3063,7 +3097,7 @@ function updateSuggestions() {
     const selectedProfessor = getProfessorById(professorId);
     if (selectedProfessor && !professorHasDiscipline(selectedProfessor, disciplineId)) {
       suggestions.push(
-        '<button type="button" class="suggestion-warning suggestion-action" data-suggestion-action="link-professor">Professor selecionado não está vinculado a esta disciplina. Clique para vincular.</button>'
+        '<button type="button" class="suggestion-warning suggestion-action" data-suggestion-action="link-professor">Docente selecionado não está vinculado a esta disciplina. Clique para vincular.</button>'
       );
     }
   }
@@ -3087,7 +3121,7 @@ function handleSuggestionAction(action) {
   if (!discipline || !professor) return;
 
   const proceed = confirm(
-    `Deseja vincular ${professor.name} à disciplina ${formatDisciplineLabel(discipline)}?`
+    `Deseja vincular o docente ${professor.name} à disciplina ${formatDisciplineLabel(discipline)}?`
   );
   if (!proceed) return;
 
@@ -3162,7 +3196,7 @@ function fillAssignmentDisciplineOptions(professorId) {
   if (!elements.assignmentDiscipline) return;
   const currentValue = elements.assignmentDiscipline.value;
   const options = getDisciplinesOrderedForProfessor(professorId);
-  elements.assignmentDiscipline.innerHTML = '<option value="">Selecione</option>';
+  elements.assignmentDiscipline.innerHTML = '<option value=""></option>';
   options.forEach(({ id, label, linked }) => {
     const option = document.createElement('option');
     option.value = id;
@@ -3185,7 +3219,7 @@ function fillAssignmentProfessorOptions(disciplineId, options = {}) {
   const desiredValue = presetValue !== null ? presetValue : currentValue;
   const professorOptions = getProfessorsOrderedForDiscipline(disciplineId);
 
-  elements.assignmentProfessor.innerHTML = '<option value="">Selecione</option>';
+  elements.assignmentProfessor.innerHTML = '<option value=""></option>';
   professorOptions.forEach(({ id, label, linked }) => {
     const option = document.createElement('option');
     option.value = id;
@@ -3227,7 +3261,7 @@ function fillAssignmentRoomOptions(options = {}) {
     return compareEntities('room', a, b);
   });
 
-  elements.assignmentRoom.innerHTML = '<option value="">Selecione</option>';
+  elements.assignmentRoom.innerHTML = '<option value=""></option>';
   rooms.forEach((room) => {
     const option = document.createElement('option');
     option.value = room.id;
@@ -3247,7 +3281,7 @@ function populateModalSelects() {
   sortAllCollections();
   fillAssignmentDisciplineOptions(state.view === 'professor' ? state.selectedEntity : '');
 
-  elements.assignmentPeriod.innerHTML = '<option value="">Selecione</option>';
+  elements.assignmentPeriod.innerHTML = '<option value=""></option>';
   state.periods.forEach((period) => {
     const option = document.createElement('option');
     option.value = period.id;
@@ -4057,8 +4091,9 @@ function resetSearchFilters() {
 function setupSearchableDropdowns() {
   registerSearchableDropdown('assignment-discipline', { placeholder: 'Buscar disciplina' });
   registerSearchableDropdown('assignment-period', { placeholder: 'Buscar período' });
-  registerSearchableDropdown('assignment-professor', { placeholder: 'Buscar professor' });
+  registerSearchableDropdown('assignment-professor', { placeholder: 'Buscar docente' });
   registerSearchableDropdown('assignment-room', { placeholder: 'Buscar sala' });
+  registerSearchableDropdown('entity-selector', { placeholder: 'Buscar item' });
 }
 
 function bindForms() {
