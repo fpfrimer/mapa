@@ -8,65 +8,64 @@
 </head>
 <body>
   <header>
-    <h1>Mapa de horários acadêmicos COELE-TD</h1>
+    <div class="top-bar" role="region" aria-label="Seleção de visualização">
+      <h1 class="top-bar__title">Mapa de horários acadêmicos COELE-TD</h1>
+
+      <div class="top-bar__controls">
+        <div class="top-bar__section">
+          <label class="control-label" for="view-type">Visualizar por:</label>
+          <select id="view-type" class="control-select">
+            <option value="period">Período</option>
+            <option value="professor">Docente</option>
+            <option value="room">Sala</option>
+          </select>
+        </div>
+
+        <div class="top-bar__section">
+          <label class="control-label" for="entity-selector-search">Selecionar:</label>
+          <div class="searchable-select" data-select="entity-selector">
+            <div class="searchable-input-wrapper">
+              <input
+                type="search"
+                id="entity-selector-search"
+                class="searchable-input"
+                placeholder="Buscar item"
+                autocomplete="off"
+              />
+              <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                <span aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <ul class="searchable-options" role="listbox"></ul>
+          </div>
+          <select id="entity-selector" class="searchable-native">
+            <option value=""></option>
+          </select>
+        </div>
+
+        <div class="top-bar__divider" aria-hidden="true"></div>
+
+        <div class="top-bar__section top-bar__section--selection" aria-live="polite">
+          <button
+            type="button"
+            id="toggle-multi-select"
+            class="secondary"
+            aria-pressed="false"
+          >
+            Ativar seleção múltipla
+          </button>
+          <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
+          <div class="selection-actions">
+            <button type="button" id="edit-selection" disabled>Editar seleção</button>
+            <button type="button" id="clear-selection" disabled>Limpar</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main>
     <div class="sidebar-column">
-      <div
-        class="control-sidebar"
-        aria-label="Controles da grade de horários"
-        title="Painel de visualização e seleção"
-        tabindex="0"
-      >
-        <div class="rail-icon" aria-hidden="true">🎛️</div>
-        <div class="rail-content">
-          <div class="view-controls">
-            <div class="control-group">
-              <label for="view-type">Visualizar por:</label>
-              <select id="view-type">
-                <option value="period">Período</option>
-                <option value="professor">Docente</option>
-                <option value="room">Sala</option>
-              </select>
-            </div>
-
-            <div class="control-group">
-              <label for="entity-selector-search">Selecionar:</label>
-              <div class="searchable-select" data-select="entity-selector">
-                <div class="searchable-input-wrapper">
-                  <input
-                    type="search"
-                    id="entity-selector-search"
-                    class="searchable-input"
-                    placeholder="Buscar item"
-                    autocomplete="off"
-                  />
-                  <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                    <span aria-hidden="true">▾</span>
-                  </button>
-                </div>
-                <ul class="searchable-options" role="listbox"></ul>
-              </div>
-              <select id="entity-selector" class="searchable-native">
-                <option value=""></option>
-              </select>
-            </div>
-          </div>
-
-          <div class="selection-tools" aria-live="polite">
-            <button type="button" id="toggle-multi-select" class="secondary" aria-pressed="false">
-              Ativar seleção múltipla
-            </button>
-            <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
-            <div class="selection-actions">
-              <button type="button" id="edit-selection" disabled>Editar seleção</button>
-              <button type="button" id="clear-selection" disabled>Limpar</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <nav class="entity-menu" aria-label="Gerenciar cadastros">
         <button
           type="button"
@@ -78,7 +77,7 @@
           title="Gerenciar períodos"
         >
           <span class="icon" aria-hidden="true">🗓️</span>
-          <span class="label">Períodos</span>
+          <span class="label visually-hidden">Períodos</span>
         </button>
         <button
           type="button"
@@ -90,7 +89,7 @@
           title="Gerenciar docentes"
         >
           <span class="icon" aria-hidden="true">👩‍🏫</span>
-          <span class="label">Docentes</span>
+          <span class="label visually-hidden">Docentes</span>
         </button>
         <button
           type="button"
@@ -102,7 +101,7 @@
           title="Gerenciar salas"
         >
           <span class="icon" aria-hidden="true">🏫</span>
-          <span class="label">Salas</span>
+          <span class="label visually-hidden">Salas</span>
         </button>
         <button
           type="button"
@@ -114,8 +113,10 @@
           title="Gerenciar disciplinas"
         >
           <span class="icon" aria-hidden="true">📚</span>
-          <span class="label">Disciplinas</span>
+          <span class="label visually-hidden">Disciplinas</span>
         </button>
+
+        <div class="menu-divider" role="presentation"></div>
         <button
           type="button"
           class="menu-button"
@@ -126,7 +127,18 @@
           title="Configurações salvas"
         >
           <span class="icon" aria-hidden="true">⚙️</span>
-          <span class="label">Configurações</span>
+          <span class="label visually-hidden">Configurações</span>
+        </button>
+        <button
+          type="button"
+          id="dark-mode-toggle"
+          class="menu-button menu-button--toggle"
+          aria-pressed="false"
+          aria-label="Ativar modo noturno"
+          title="Ativar modo noturno"
+        >
+          <span class="icon" aria-hidden="true">🌙</span>
+          <span class="label visually-hidden">Modo noturno</span>
         </button>
       </nav>
     </div>

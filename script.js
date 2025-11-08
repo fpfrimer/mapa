@@ -52,6 +52,8 @@ const disciplineColorPalette = [
 
 const DEFAULT_DISCIPLINE_COLOR = disciplineColorPalette[0] || '#2962ff';
 
+const DARK_MODE_STORAGE_KEY = 'planner.darkMode';
+
 function normalizeColorValue(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -140,6 +142,59 @@ function ensureDisciplineColors() {
       discipline.color = color;
       used.add(color);
     }
+  });
+}
+
+function loadDarkModePreference(defaultValue = false) {
+  try {
+    const stored = localStorage.getItem(DARK_MODE_STORAGE_KEY);
+    if (stored === null) return defaultValue;
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return defaultValue;
+  } catch (error) {
+    console.warn('Não foi possível carregar a preferência de tema.', error);
+    return defaultValue;
+  }
+}
+
+function saveDarkModePreference(enabled) {
+  try {
+    localStorage.setItem(DARK_MODE_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch (error) {
+    console.warn('Não foi possível salvar a preferência de tema.', error);
+  }
+}
+
+function applyDarkMode(enabled) {
+  const { darkModeToggle } = elements;
+  document.body.classList.toggle('theme-dark', Boolean(enabled));
+  if (!darkModeToggle) return;
+  const icon = darkModeToggle.querySelector('.icon');
+  const isEnabled = Boolean(enabled);
+  darkModeToggle.setAttribute('aria-pressed', String(isEnabled));
+  darkModeToggle.setAttribute(
+    'aria-label',
+    isEnabled ? 'Desativar modo noturno' : 'Ativar modo noturno'
+  );
+  darkModeToggle.setAttribute(
+    'title',
+    isEnabled ? 'Desativar modo noturno' : 'Ativar modo noturno'
+  );
+  if (icon) {
+    icon.textContent = isEnabled ? '☀️' : '🌙';
+  }
+}
+
+function setupDarkModeToggle() {
+  const { darkModeToggle } = elements;
+  if (!darkModeToggle) return;
+  const initialPreference = loadDarkModePreference();
+  applyDarkMode(initialPreference);
+  darkModeToggle.addEventListener('click', () => {
+    const next = !document.body.classList.contains('theme-dark');
+    applyDarkMode(next);
+    saveDarkModePreference(next);
   });
 }
 
@@ -424,7 +479,7 @@ const elements = {
   professorDisciplineList: document.getElementById('professor-discipline-list'),
   professorAreaCheckbox: document.getElementById('professor-area'),
   entityMenu: document.querySelector('.entity-menu'),
-  menuButtons: document.querySelectorAll('.menu-button'),
+  menuButtons: document.querySelectorAll('.menu-button[data-panel]'),
   managementPanel: document.getElementById('management-panel'),
   panelTitle: document.getElementById('panel-title'),
   panelClose: document.querySelector('.panel-close'),
@@ -463,7 +518,8 @@ const elements = {
   exportButton: document.getElementById('export-config'),
   importInput: document.getElementById('import-config'),
   clearBrowserButton: document.getElementById('clear-browser'),
-  storageFeedback: document.getElementById('storage-feedback')
+  storageFeedback: document.getElementById('storage-feedback'),
+  darkModeToggle: document.getElementById('dark-mode-toggle')
 };
 
 function clearRelatedHighlights() {
@@ -4596,6 +4652,7 @@ elements.entitySelector.addEventListener('change', (event) => {
 });
 
 async function init() {
+  setupDarkModeToggle();
   await loadSavedConfigurationsFromServer();
   setupProfessorFormControls();
   setupSearchableDropdowns();
