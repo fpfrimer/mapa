@@ -49,15 +49,35 @@
           <button
             type="button"
             id="toggle-multi-select"
-            class="secondary"
+            class="icon-button top-bar__icon-button"
             aria-pressed="false"
+            title="Ativar seleção múltipla"
           >
-            Ativar seleção múltipla
+            <span class="icon" aria-hidden="true">🗂️</span>
+            <span class="visually-hidden">Ativar seleção múltipla</span>
           </button>
           <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
           <div class="selection-actions">
-            <button type="button" id="edit-selection" disabled>Editar seleção</button>
-            <button type="button" id="clear-selection" disabled>Limpar</button>
+            <button
+              type="button"
+              id="edit-selection"
+              class="icon-button top-bar__icon-button"
+              title="Editar seleção"
+              disabled
+            >
+              <span class="icon" aria-hidden="true">✏️</span>
+              <span class="visually-hidden">Editar seleção</span>
+            </button>
+            <button
+              type="button"
+              id="clear-selection"
+              class="icon-button top-bar__icon-button"
+              title="Limpar seleção"
+              disabled
+            >
+              <span class="icon" aria-hidden="true">🗑️</span>
+              <span class="visually-hidden">Limpar seleção</span>
+            </button>
           </div>
         </div>
       </div>

@@ -1992,10 +1992,17 @@ function formatSlotLabel(dayKey, slotCode) {
 function updateSelectionUI() {
   const { toggleMultiSelect, selectionSummary, editSelection, clearSelection } = elements;
   if (toggleMultiSelect) {
-    toggleMultiSelect.setAttribute('aria-pressed', state.multiSelectMode ? 'true' : 'false');
-    toggleMultiSelect.textContent = state.multiSelectMode
+    const toggleLabel = state.multiSelectMode
       ? 'Desativar seleção múltipla'
       : 'Ativar seleção múltipla';
+    toggleMultiSelect.setAttribute('aria-pressed', state.multiSelectMode ? 'true' : 'false');
+    toggleMultiSelect.setAttribute('aria-label', toggleLabel);
+    toggleMultiSelect.setAttribute('title', toggleLabel);
+    toggleMultiSelect.classList.toggle('is-active', state.multiSelectMode);
+    const hiddenToggleLabel = toggleMultiSelect.querySelector('.visually-hidden');
+    if (hiddenToggleLabel) {
+      hiddenToggleLabel.textContent = toggleLabel;
+    }
   }
   const count = state.selectedSlots.size;
   if (selectionSummary) {
@@ -2008,9 +2015,21 @@ function updateSelectionUI() {
   }
   if (editSelection) {
     editSelection.disabled = !count;
+    editSelection.setAttribute('aria-label', 'Editar seleção');
+    editSelection.setAttribute(
+      'title',
+      count ? 'Editar seleção' : 'Editar seleção (selecione horários)'
+    );
+    editSelection.setAttribute('aria-disabled', editSelection.disabled ? 'true' : 'false');
   }
   if (clearSelection) {
     clearSelection.disabled = !count;
+    clearSelection.setAttribute('aria-label', 'Limpar seleção');
+    clearSelection.setAttribute(
+      'title',
+      count ? 'Limpar seleção' : 'Limpar seleção (selecione horários)'
+    );
+    clearSelection.setAttribute('aria-disabled', clearSelection.disabled ? 'true' : 'false');
   }
 }
 
