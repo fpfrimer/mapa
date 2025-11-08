@@ -1,0 +1,12 @@
+# Dados salvos no servidor (mantém o arquivo vazio inicial)
+data/*.json
+!data/configurations.json
+
+# Dados e arquivos gerados em runtime
+data/
+node_modules/
+*.log
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
