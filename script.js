@@ -30,6 +30,11 @@ const searchQueries = {
 
 let activePanelKey = null;
 
+const SLOT_DRAG_THRESHOLD = 6;
+let pendingSlotDrag = null;
+let activeSlotDrag = null;
+const suppressedSlotClickButtons = new WeakSet();
+
 const disciplineColorPalette = [
   '#f94144',
   '#f3722c',
@@ -1946,11 +1951,273 @@ function toggleSlotSelection(dayKey, slotCode, button) {
 }
 
 function handleSlotClick(button, dayKey, slotCode) {
+  if (suppressedSlotClickButtons.has(button)) {
+    suppressedSlotClickButtons.delete(button);
+    return;
+  }
+  if (activeSlotDrag) {
+    return;
+  }
   if (state.multiSelectMode) {
     toggleSlotSelection(dayKey, slotCode, button);
     return;
   }
   openAssignmentModalForSlots([{ dayKey, slotCode }]);
+}
+
+function detachSlotPointerHandlers(button) {
+  if (!button) return;
+  button.removeEventListener('pointermove', onSlotPointerMove);
+  button.removeEventListener('pointerup', onSlotPointerUp);
+  button.removeEventListener('pointercancel', onSlotPointerCancel);
+}
+
+function onSlotPointerDown(event, button, dayKey, slotCode) {
+  if (!button || typeof event?.button !== 'number') return;
+  if (event.button !== 0) return;
+  if (state.view !== 'period') return;
+  if (!state.selectedEntity) return;
+  if (state.multiSelectMode || state.selectedSlots.size) return;
+  if (activeSlotDrag || pendingSlotDrag) return;
+
+  const key = slotKey(dayKey, slotCode);
+  const assignment = getAssignmentForPeriod(state.selectedEntity, key);
+  if (!assignment) return;
+
+  pendingSlotDrag = {
+    button,
+    dayKey,
+    slotCode,
+    key,
+    periodId: state.selectedEntity,
+    assignment,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY
+  };
+
+  try {
+    button.setPointerCapture(event.pointerId);
+  } catch (error) {
+    // ignore capture errors in unsupported browsers
+  }
+
+  button.addEventListener('pointermove', onSlotPointerMove);
+  button.addEventListener('pointerup', onSlotPointerUp);
+  button.addEventListener('pointercancel', onSlotPointerCancel);
+}
+
+function onSlotPointerMove(event) {
+  if (pendingSlotDrag && event.pointerId === pendingSlotDrag.pointerId) {
+    const deltaX = event.clientX - pendingSlotDrag.startX;
+    const deltaY = event.clientY - pendingSlotDrag.startY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    if (distance >= SLOT_DRAG_THRESHOLD) {
+      startSlotDrag(pendingSlotDrag, event);
+      pendingSlotDrag = null;
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    }
+  }
+
+  if (activeSlotDrag && event.pointerId === activeSlotDrag.pointerId) {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    updateActiveDragPosition(event);
+  }
+}
+
+function onSlotPointerUp(event) {
+  finishSlotDrag(event, false);
+}
+
+function onSlotPointerCancel(event) {
+  finishSlotDrag(event, true);
+}
+
+function startSlotDrag(candidate, event) {
+  if (!candidate) return;
+
+  activeSlotDrag = {
+    pointerId: candidate.pointerId,
+    periodId: candidate.periodId,
+    assignment: candidate.assignment,
+    key: candidate.key,
+    originButton: candidate.button,
+    evaluations: evaluateSlotDragTargets(candidate),
+    hoverButton: null
+  };
+
+  applySlotDragClasses(activeSlotDrag);
+  updateActiveDragPosition(event);
+}
+
+function evaluateSlotDragTargets(candidate) {
+  const map = new Map();
+  const container = elements.scheduleContainer;
+  if (!container) return map;
+  const buttons = container.querySelectorAll('.slot-cell');
+  buttons.forEach((button) => {
+    if (!button) return;
+    const { day: dayKey, slot: slotCode } = button.dataset || {};
+    if (!dayKey || !slotCode) return;
+    const key = slotKey(dayKey, slotCode);
+    const conflicts = findConflicts({
+      periodId: candidate.periodId,
+      professorId: candidate.assignment.professorId,
+      roomId: candidate.assignment.roomId,
+      key,
+      originalPeriodId: candidate.periodId,
+      originalEntry: candidate.assignment
+    });
+    map.set(button, {
+      key,
+      dayKey,
+      slotCode,
+      compatible: conflicts.length === 0,
+      conflicts
+    });
+  });
+  return map;
+}
+
+function applySlotDragClasses(context) {
+  const container = elements.scheduleContainer;
+  context.evaluations.forEach((info, button) => {
+    button.classList.add('is-drag-target');
+    if (info.key === context.key) {
+      button.classList.add('is-drag-origin');
+      button.classList.remove('is-drag-compatible', 'is-drag-incompatible');
+    } else {
+      button.classList.remove('is-drag-origin');
+      if (info.compatible) {
+        button.classList.add('is-drag-compatible');
+        button.classList.remove('is-drag-incompatible');
+      } else {
+        button.classList.add('is-drag-incompatible');
+        button.classList.remove('is-drag-compatible');
+      }
+    }
+  });
+
+  if (container) {
+    container.classList.add('is-dragging');
+  }
+}
+
+function updateActiveDragPosition(event) {
+  const targetButton = getSlotButtonFromPoint(event.clientX, event.clientY);
+  setActiveDragHover(targetButton);
+}
+
+function getSlotButtonFromPoint(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const element = document.elementFromPoint(x, y);
+  if (!element) return null;
+  return element.closest('.slot-cell');
+}
+
+function setActiveDragHover(button) {
+  if (!activeSlotDrag) return;
+  const nextButton = button && activeSlotDrag.evaluations.has(button) ? button : null;
+  if (activeSlotDrag.hoverButton && activeSlotDrag.hoverButton !== nextButton) {
+    activeSlotDrag.hoverButton.classList.remove('is-drag-hover');
+  }
+  if (nextButton && activeSlotDrag.hoverButton !== nextButton) {
+    nextButton.classList.add('is-drag-hover');
+  }
+  activeSlotDrag.hoverButton = nextButton;
+}
+
+function finishSlotDrag(event, cancelled) {
+  const button = event.currentTarget;
+  detachSlotPointerHandlers(button);
+  try {
+    if (button && typeof event.pointerId === 'number') {
+      button.releasePointerCapture(event.pointerId);
+    }
+  } catch (error) {
+    // ignore release errors
+  }
+
+  if (pendingSlotDrag && event.pointerId === pendingSlotDrag.pointerId) {
+    pendingSlotDrag = null;
+  }
+
+  if (!activeSlotDrag || event.pointerId !== activeSlotDrag.pointerId) {
+    return;
+  }
+
+  const context = activeSlotDrag;
+  let dropInfo = null;
+
+  if (!cancelled) {
+    const hovered = context.hoverButton;
+    if (hovered && context.evaluations.has(hovered)) {
+      dropInfo = context.evaluations.get(hovered);
+    } else {
+      const fallback = getSlotButtonFromPoint(event.clientX, event.clientY);
+      if (fallback && context.evaluations.has(fallback)) {
+        dropInfo = context.evaluations.get(fallback);
+      }
+    }
+  }
+
+  const shouldMove = Boolean(dropInfo && dropInfo.compatible && dropInfo.key !== context.key);
+
+  clearActiveSlotDrag();
+
+  if (button) {
+    suppressedSlotClickButtons.add(button);
+  }
+
+  if (shouldMove) {
+    performSlotDrop(context, dropInfo);
+  }
+}
+
+function clearActiveSlotDrag() {
+  if (!activeSlotDrag) return;
+  activeSlotDrag.evaluations.forEach((info, button) => {
+    button.classList.remove(
+      'is-drag-target',
+      'is-drag-compatible',
+      'is-drag-incompatible',
+      'is-drag-hover',
+      'is-drag-origin'
+    );
+  });
+  const container = elements.scheduleContainer;
+  if (container) {
+    container.classList.remove('is-dragging');
+  }
+  activeSlotDrag = null;
+}
+
+function performSlotDrop(context, targetInfo) {
+  if (!context || !targetInfo) return;
+  const schedule = ensureSchedule(context.periodId);
+  const currentEntry = schedule[context.key];
+  const entry = currentEntry || context.assignment;
+  if (!entry) return;
+
+  if (schedule[targetInfo.key] && schedule[targetInfo.key] !== entry) {
+    delete schedule[targetInfo.key];
+  }
+
+  delete schedule[context.key];
+  schedule[targetInfo.key] = entry;
+
+  persistState();
+  renderSchedule();
+  refreshLists();
+}
+
+function setupSlotDrag(button, dayKey, slotCode) {
+  if (!button) return;
+  button.addEventListener('pointerdown', (event) => onSlotPointerDown(event, button, dayKey, slotCode));
 }
 
 function ensureSchedule(periodId) {
@@ -2158,7 +2425,12 @@ function renderSchedule() {
         const button = document.importNode(document.getElementById('cell-template').content, true).querySelector('.slot-cell');
         button.dataset.day = day.key;
         button.dataset.slot = slot.code;
+        const key = slotKey(day.key, slot.code);
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
+        const periodAssignment =
+          state.view === 'period' && state.selectedEntity
+            ? getAssignmentForPeriod(state.selectedEntity, key)
+            : null;
         const cellContent = buildCellContent(assignments);
         button.innerHTML = cellContent.html;
         if (cellContent.errors.length) {
@@ -2168,7 +2440,9 @@ function renderSchedule() {
           button.classList.remove('has-error');
           button.removeAttribute('title');
         }
-        const key = slotKey(day.key, slot.code);
+        if (periodAssignment) {
+          button.classList.add('is-draggable');
+        }
         if (state.selectedSlots.has(key)) {
           button.classList.add('selected');
           button.setAttribute('aria-pressed', 'true');
@@ -2178,6 +2452,7 @@ function renderSchedule() {
         button.addEventListener('click', (event) => {
           handleSlotClick(event.currentTarget, day.key, slot.code);
         });
+        setupSlotDrag(button, day.key, slot.code);
         cell.appendChild(button);
         row.appendChild(cell);
       });
