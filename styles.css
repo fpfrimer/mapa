@@ -12,6 +12,8 @@
   --manha: #fff3cd;
   --tarde: #ffe0b2;
   --noite: #d1ecf1;
+  --rail-collapsed: 3.5rem;
+  --rail-expanded: 20rem;
 }
 
 * {
@@ -71,14 +73,15 @@ main {
 .sidebar-column {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   position: sticky;
   top: 6.5rem;
   align-self: start;
   max-height: calc(100vh - 8rem);
-  overflow-y: auto;
+  overflow: visible;
   padding-right: 0.25rem;
-  width: clamp(260px, 26vw, 320px);
+  width: var(--rail-collapsed);
+  min-width: var(--rail-collapsed);
 }
 
 .sidebar-column > * {
@@ -88,37 +91,60 @@ main {
 .entity-menu {
   background: var(--panel-bg);
   border-radius: 16px;
-  padding: 1rem 0.75rem;
+  padding: 0.75rem 0.4rem;
   box-shadow: 0 12px 24px rgba(31, 45, 61, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
+  gap: 0.35rem;
+  width: var(--rail-collapsed);
+  transition: width 0.25s ease, box-shadow 0.25s ease;
+  overflow: hidden;
+}
+
+.entity-menu:hover,
+.entity-menu:focus-within {
+  width: var(--rail-expanded);
 }
 
 .menu-button {
   border: none;
   background: none;
   border-radius: 12px;
-  padding: 0.75rem 0.5rem;
+  padding: 0.65rem 0.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  gap: 0.35rem;
   cursor: pointer;
   color: var(--muted);
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  position: relative;
+}
+
+.entity-menu:not(:hover):not(:focus-within) .menu-button {
+  padding-inline: 0.35rem;
 }
 
 .menu-button .icon {
-  font-size: 1.6rem;
+  font-size: 1.55rem;
 }
 
 .menu-button .label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: currentColor;
+  transition: opacity 0.2s ease;
+  opacity: 1;
+  white-space: nowrap;
+}
+
+.entity-menu:not(:hover):not(:focus-within) .menu-button .label {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .menu-button:hover,
@@ -137,6 +163,8 @@ main {
 
 .menu-button.active .label {
   color: inherit;
+  opacity: 1;
+  height: auto;
 }
 
 .management-panel {
@@ -628,13 +656,55 @@ button.primary:hover {
 .control-sidebar {
   background: var(--panel-bg);
   border-radius: 16px;
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 0.4rem;
   box-shadow: 0 10px 24px rgba(31, 45, 61, 0.08);
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  width: 100%;
+  width: var(--rail-collapsed);
   align-self: stretch;
+  transition: width 0.25s ease, padding 0.25s ease;
+  overflow: hidden;
+}
+
+.control-sidebar .rail-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: var(--muted);
+  min-height: 3rem;
+}
+
+.control-sidebar .rail-content {
+  display: none;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.control-sidebar:hover,
+.control-sidebar:focus,
+.control-sidebar:focus-within {
+  width: var(--rail-expanded);
+  padding: 1.25rem 1.5rem;
+}
+
+.control-sidebar:focus,
+.control-sidebar:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.control-sidebar:hover .rail-icon,
+.control-sidebar:focus .rail-icon,
+.control-sidebar:focus-within .rail-icon {
+  display: none;
+}
+
+.control-sidebar:hover .rail-content,
+.control-sidebar:focus .rail-content,
+.control-sidebar:focus-within .rail-content {
+  display: flex;
 }
 
 @media (max-width: 1100px) {
@@ -647,10 +717,37 @@ button.primary:hover {
     max-height: none;
     overflow: visible;
     padding-right: 0;
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    gap: 1rem;
+  }
+
+  .entity-menu,
+  .control-sidebar {
+    width: 100%;
+    transition: none;
+  }
+
+  .entity-menu {
+    padding: 1rem 0.75rem;
+  }
+
+  .entity-menu .menu-button .label {
+    opacity: 1;
+    height: auto;
   }
 
   .control-sidebar {
-    width: 100%;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .control-sidebar .rail-icon {
+    display: none;
+  }
+
+  .control-sidebar .rail-content {
+    display: flex;
   }
 }
 

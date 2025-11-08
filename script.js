@@ -1975,21 +1975,37 @@ function detachSlotPointerHandlers(button) {
 function onSlotPointerDown(event, button, dayKey, slotCode) {
   if (!button || typeof event?.button !== 'number') return;
   if (event.button !== 0) return;
-  if (state.view !== 'period') return;
   if (!state.selectedEntity) return;
   if (state.multiSelectMode || state.selectedSlots.size) return;
   if (activeSlotDrag || pendingSlotDrag) return;
 
+  const allowedViews = ['period', 'professor', 'room'];
+  if (!allowedViews.includes(state.view)) return;
+
   const key = slotKey(dayKey, slotCode);
-  const assignment = getAssignmentForPeriod(state.selectedEntity, key);
-  if (!assignment) return;
+  let periodId = null;
+  let assignment = null;
+
+  if (state.view === 'period') {
+    periodId = state.selectedEntity;
+    assignment = getAssignmentForPeriod(periodId, key);
+  } else {
+    const assignments = getCellAssignments(state.view, state.selectedEntity, dayKey, slotCode);
+    const draggableInfo = getDraggableAssignmentInfo(assignments);
+    if (draggableInfo) {
+      periodId = draggableInfo.periodId;
+      assignment = draggableInfo.data;
+    }
+  }
+
+  if (!assignment || !periodId) return;
 
   pendingSlotDrag = {
     button,
     dayKey,
     slotCode,
     key,
-    periodId: state.selectedEntity,
+    periodId,
     assignment,
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -2375,6 +2391,15 @@ function getCellAssignments(view, entityId, dayKey, slotCode) {
   return [];
 }
 
+function getDraggableAssignmentInfo(assignments) {
+  if (!Array.isArray(assignments)) return null;
+  const valid = assignments.filter((entry) => entry && entry.data && entry.periodId);
+  if (valid.length !== 1) {
+    return null;
+  }
+  return valid[0];
+}
+
 function renderSchedule() {
   const { scheduleContainer } = elements;
   scheduleContainer.innerHTML = '';
@@ -2427,10 +2452,7 @@ function renderSchedule() {
         button.dataset.slot = slot.code;
         const key = slotKey(day.key, slot.code);
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
-        const periodAssignment =
-          state.view === 'period' && state.selectedEntity
-            ? getAssignmentForPeriod(state.selectedEntity, key)
-            : null;
+        const draggableInfo = getDraggableAssignmentInfo(assignments);
         const cellContent = buildCellContent(assignments);
         button.innerHTML = cellContent.html;
         if (cellContent.errors.length) {
@@ -2440,8 +2462,10 @@ function renderSchedule() {
           button.classList.remove('has-error');
           button.removeAttribute('title');
         }
-        if (periodAssignment) {
+        if (draggableInfo) {
           button.classList.add('is-draggable');
+        } else {
+          button.classList.remove('is-draggable');
         }
         if (state.selectedSlots.has(key)) {
           button.classList.add('selected');
