@@ -99,6 +99,8 @@ main {
   width: var(--rail-collapsed);
   transition: width 0.25s ease, box-shadow 0.25s ease;
   overflow: hidden;
+  position: relative;
+  z-index: 6;
 }
 
 .entity-menu:hover,
@@ -665,6 +667,8 @@ button.primary:hover {
   align-self: stretch;
   transition: width 0.25s ease, padding 0.25s ease;
   overflow: hidden;
+  position: relative;
+  z-index: 6;
 }
 
 .control-sidebar .rail-icon {
@@ -1039,7 +1043,7 @@ button.primary:hover {
 .schedule-table thead th {
   position: sticky;
   top: 0;
-  z-index: 8;
+  z-index: 3;
   background: rgba(31, 45, 61, 0.06);
   font-weight: 600;
   text-transform: uppercase;
@@ -1196,18 +1200,25 @@ button.primary:hover {
 }
 
 .session-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   font-weight: 600;
-  color: var(--muted);
-  background: rgba(96, 125, 139, 0.12);
-  padding: 0.45rem 0.6rem;
+  color: var(--primary-dark);
+  background: linear-gradient(135deg, rgba(41, 98, 255, 0.18), rgba(41, 98, 255, 0.08));
+  padding: 0.5rem 1.2rem;
   border-radius: 999px;
-  font-size: 0.75rem;
-  letter-spacing: 0.03em;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0 auto;
+  box-shadow: 0 6px 18px rgba(31, 45, 61, 0.12);
 }
 
 .session-row th {
-  text-align: left;
-  padding-left: 0.85rem;
+  text-align: center;
+  padding: 1rem 0;
   font-size: 0.95rem;
   color: var(--muted);
   border: 1px solid transparent;
