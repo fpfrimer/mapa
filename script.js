@@ -388,24 +388,24 @@ const sessions = [
     name: 'Tarde',
     key: 'tarde',
     slots: [
-      { code: 'T1', time: '13:30 - 14:20' },
-      { code: 'T2', time: '14:20 - 15:10' },
-      { code: 'T3', time: '15:10 - 16:00' },
-      { code: 'T4', time: '16:20 - 17:10' },
-      { code: 'T5', time: '17:10 - 18:00' },
-      { code: 'T6', time: '18:00 - 18:50' }
+      { code: 'T1', time: '13:00 - 13:50' },
+      { code: 'T2', time: '13:50 - 14:40' },
+      { code: 'T3', time: '14:40 - 15:30' },
+      { code: 'T4', time: '15:50 - 16:40' },
+      { code: 'T5', time: '16:40 - 17:20' },
+      { code: 'T6', time: '17:20 - 18:00' }
     ]
   },
   {
     name: 'Noite',
     key: 'noite',
     slots: [
-      { code: 'N1', time: '18:50 - 19:40' },
-      { code: 'N2', time: '19:40 - 20:30' },
-      { code: 'N3', time: '20:30 - 21:20' },
-      { code: 'N4', time: '21:30 - 22:20' },
-      { code: 'N5', time: '22:20 - 23:10' },
-      { code: 'N6', time: '23:10 - 00:00' }
+      { code: 'N1', time: '18:40 - 19:30' },
+      { code: 'N2', time: '19:30 - 20:20' },
+      { code: 'N3', time: '20:20 - 21:10' },
+      { code: 'N4', time: '21:20 - 22:10' },
+      { code: 'N5', time: '22:10 - 23:00' },
+      { code: 'N6', time: '--:-- - --:--0' }
     ]
   }
 ];
