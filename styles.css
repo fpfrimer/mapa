@@ -800,6 +800,96 @@ button.primary:hover {
   min-width: 0;
 }
 
+.top-bar__section--config {
+  flex: 1 1 clamp(220px, 32vw, 360px);
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.active-config-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.active-config-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.active-config-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-config-name.is-placeholder {
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.active-config-status {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.active-config-status--synced {
+  color: #c8f7dc;
+}
+
+.active-config-status--dirty {
+  color: #ffecb3;
+}
+
+.active-config-status--saving {
+  color: #cfd8dc;
+}
+
+.active-config-status--needs-name {
+  color: #ffe082;
+}
+
+.active-config-status--error {
+  color: #ffab91;
+}
+
+.top-bar__save-button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.95rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.top-bar__save-button:hover {
+  background: rgba(255, 255, 255, 0.32);
+  transform: translateY(-1px);
+}
+
+.top-bar__save-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.top-bar__save-button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
 .top-bar__section--selection {
   flex: 1 1 auto;
   justify-content: flex-end;
@@ -948,6 +1038,16 @@ body.theme-dark .top-bar__icon-button.is-active {
   .top-bar__section {
     width: 100%;
     min-width: 0;
+  }
+
+  .top-bar__section--config {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar__save-button {
+    width: 100%;
+    text-align: center;
   }
 
   .top-bar__section--selection {

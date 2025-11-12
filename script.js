@@ -9,6 +9,9 @@ const state = {
   assignmentEditing: null,
   entityEditing: null,
   multiSelectMode: false,
+  activeConfigurationId: '',
+  activeConfigurationName: '',
+  activeConfigurationStatus: 'idle',
   selectedSlots: new Set()
 };
 
@@ -20,6 +23,19 @@ let counters = {
 };
 
 let savedConfigurations = [];
+
+const ACTIVE_CONFIG_STATUS = {
+  IDLE: 'idle',
+  NEEDS_NAME: 'needs-name',
+  DIRTY: 'dirty',
+  SAVING: 'saving',
+  SYNCED: 'synced',
+  ERROR: 'error'
+};
+
+const ACTIVE_CONFIG_STATUS_VALUES = new Set(Object.values(ACTIVE_CONFIG_STATUS));
+const ACTIVE_CONFIG_AUTOSAVE_DELAY = 5000;
+let activeConfigAutosaveTimer = null;
 
 const searchQueries = {
   period: '',
@@ -548,6 +564,9 @@ const elements = {
   selectionSummary: document.getElementById('selection-summary'),
   editSelection: document.getElementById('edit-selection'),
   clearSelection: document.getElementById('clear-selection'),
+  activeConfigName: document.getElementById('active-config-name'),
+  activeConfigStatus: document.getElementById('active-config-status'),
+  quickSaveButton: document.getElementById('quick-save-config'),
   viewSummary: document.getElementById('view-summary'),
   modal: document.getElementById('assignment-modal'),
   modalClose: document.querySelector('.modal-close'),
@@ -610,6 +629,181 @@ function highlightRelatedDisciplines(disciplineIds, originCell) {
 
 const menuButtons = Array.from(elements.menuButtons || []);
 const panelSections = Array.from(elements.panelSections || []);
+
+function normalizeActiveConfigurationStatus(value) {
+  return ACTIVE_CONFIG_STATUS_VALUES.has(value) ? value : ACTIVE_CONFIG_STATUS.IDLE;
+}
+
+function getActiveConfigurationStatusText() {
+  const status = normalizeActiveConfigurationStatus(state.activeConfigurationStatus);
+  switch (status) {
+    case ACTIVE_CONFIG_STATUS.SAVING:
+      return 'Sincronizando…';
+    case ACTIVE_CONFIG_STATUS.SYNCED:
+      return 'Sincronizada.';
+    case ACTIVE_CONFIG_STATUS.DIRTY:
+      return 'Alterações pendentes de sincronização.';
+    case ACTIVE_CONFIG_STATUS.ERROR:
+      return 'Falha ao sincronizar.';
+    case ACTIVE_CONFIG_STATUS.NEEDS_NAME:
+      return state.activeConfigurationName
+        ? 'Salve manualmente para ativar a sincronização automática.'
+        : 'Defina um nome para habilitar a sincronização automática.';
+    case ACTIVE_CONFIG_STATUS.IDLE:
+    default:
+      return state.activeConfigurationName ? 'Configuração ativa pronta para edição.' : 'Nenhuma configuração ativa.';
+  }
+}
+
+function updateActiveConfigurationDisplay() {
+  const { activeConfigName, activeConfigStatus, quickSaveButton } = elements;
+  const status = normalizeActiveConfigurationStatus(state.activeConfigurationStatus);
+  const hasName = Boolean(state.activeConfigurationName);
+
+  if (activeConfigName) {
+    activeConfigName.textContent = hasName ? state.activeConfigurationName : 'Sem nome';
+    activeConfigName.classList.toggle('is-placeholder', !hasName);
+  }
+
+  if (activeConfigStatus) {
+    const baseClass = 'active-config-status';
+    activeConfigStatus.textContent = getActiveConfigurationStatusText();
+    activeConfigStatus.className = `${baseClass} ${baseClass}--${status}`;
+  }
+
+  if (quickSaveButton) {
+    const isSaving = status === ACTIVE_CONFIG_STATUS.SAVING;
+    quickSaveButton.disabled = isSaving;
+    quickSaveButton.textContent = isSaving ? 'Sincronizando…' : 'Sincronizar';
+    quickSaveButton.setAttribute('aria-busy', isSaving ? 'true' : 'false');
+    quickSaveButton.title = hasName
+      ? 'Sincronizar configuração ativa com o servidor'
+      : 'Defina um nome para salvar esta configuração';
+  }
+}
+
+function updateActiveConfigurationStatus(status, options = {}) {
+  const normalized = normalizeActiveConfigurationStatus(status);
+  const { force = false } = options;
+  if (!force && state.activeConfigurationStatus === normalized) {
+    return;
+  }
+  state.activeConfigurationStatus = normalized;
+  if (
+    normalized === ACTIVE_CONFIG_STATUS.SYNCED ||
+    normalized === ACTIVE_CONFIG_STATUS.IDLE ||
+    normalized === ACTIVE_CONFIG_STATUS.ERROR ||
+    normalized === ACTIVE_CONFIG_STATUS.NEEDS_NAME
+  ) {
+    clearActiveConfigurationAutosave();
+  }
+  updateActiveConfigurationDisplay();
+}
+
+function activateConfigurationEntry(entry, options = {}) {
+  if (!entry) return;
+  const id = typeof entry.id === 'string' ? entry.id : '';
+  const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+  state.activeConfigurationId = id;
+  state.activeConfigurationName = name;
+  const targetStatus =
+    typeof options.status === 'string'
+      ? options.status
+      : id && name
+      ? ACTIVE_CONFIG_STATUS.SYNCED
+      : ACTIVE_CONFIG_STATUS.IDLE;
+  updateActiveConfigurationStatus(targetStatus, { force: true });
+  updateActiveConfigurationDisplay();
+}
+
+function resetActiveConfiguration(options = {}) {
+  state.activeConfigurationId = '';
+  state.activeConfigurationName = '';
+  const targetStatus =
+    typeof options.status === 'string' ? options.status : ACTIVE_CONFIG_STATUS.IDLE;
+  updateActiveConfigurationStatus(targetStatus, { force: true });
+  updateActiveConfigurationDisplay();
+}
+
+function clearActiveConfigurationAutosave() {
+  if (activeConfigAutosaveTimer) {
+    clearTimeout(activeConfigAutosaveTimer);
+    activeConfigAutosaveTimer = null;
+  }
+}
+
+function scheduleActiveConfigurationAutosave() {
+  if (!state.activeConfigurationName || !state.activeConfigurationId) {
+    return;
+  }
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+  clearActiveConfigurationAutosave();
+  activeConfigAutosaveTimer = setTimeout(() => {
+    autoSaveActiveConfiguration();
+  }, ACTIVE_CONFIG_AUTOSAVE_DELAY);
+}
+
+async function autoSaveActiveConfiguration() {
+  clearActiveConfigurationAutosave();
+  if (!state.activeConfigurationName || !state.activeConfigurationId) {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+    return;
+  }
+
+  const previousStatus = state.activeConfigurationStatus;
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SAVING, { force: true });
+
+  try {
+    const result = await upsertSavedConfiguration(state.activeConfigurationName, null, {
+      skipConfirmation: true,
+      notify: false
+    });
+    if (result === 'success') {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SYNCED, { force: true });
+      if (previousStatus !== ACTIVE_CONFIG_STATUS.SYNCED) {
+        setStorageFeedback(`Configuração "${state.activeConfigurationName}" sincronizada automaticamente.`, 'success');
+      }
+    } else if (result === 'error') {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+      setStorageFeedback('Não foi possível sincronizar a configuração ativa automaticamente.', 'error');
+    } else {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+    }
+  } catch (error) {
+    console.error('Erro durante a sincronização automática.', error);
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+    setStorageFeedback('Não foi possível sincronizar a configuração ativa automaticamente.', 'error');
+  }
+}
+
+function markActiveConfigurationDirty() {
+  if (!state.activeConfigurationName) {
+    if (state.activeConfigurationStatus !== ACTIVE_CONFIG_STATUS.NEEDS_NAME) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Nomeie a configuração atual para habilitar a sincronização automática.', 'warning');
+    }
+    return;
+  }
+
+  if (!state.activeConfigurationId) {
+    if (state.activeConfigurationStatus !== ACTIVE_CONFIG_STATUS.NEEDS_NAME) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Salve a configuração nomeada manualmente para ativar a sincronização automática.', 'warning');
+    }
+    return;
+  }
+
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+  scheduleActiveConfigurationAutosave();
+}
+
+updateActiveConfigurationDisplay();
 
 function normalizeText(value) {
   return (value || '')
@@ -3531,7 +3725,7 @@ elements.removeAssignment.addEventListener('click', () => {
   });
 
   if (removed) {
-    persistState();
+    persistState({ markDirty: false });
     closeModal();
     renderSchedule();
     refreshLists();
@@ -4184,6 +4378,8 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
     (entry) => normalizeConfigName(entry?.name) === normalized
   );
 
+  let savedEntry = null;
+
   if (existingIndex >= 0) {
     if (!skipConfirmation) {
       const confirmed = confirm(
@@ -4206,6 +4402,7 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
         throw new Error('Resposta inválida do servidor.');
       }
       savedConfigurations[existingIndex] = updated;
+      savedEntry = updated;
     } catch (error) {
       console.error('Erro ao atualizar configuração no servidor.', error);
       if (notify) {
@@ -4220,6 +4417,7 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
         throw new Error('Resposta inválida do servidor.');
       }
       savedConfigurations.push(created);
+      savedEntry = created;
     } catch (error) {
       console.error('Erro ao criar configuração no servidor.', error);
       if (notify) {
@@ -4231,6 +4429,10 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
 
   sortSavedConfigurations();
   renderSavedConfigurations();
+  if (savedEntry) {
+    activateConfigurationEntry(savedEntry, { status: ACTIVE_CONFIG_STATUS.SYNCED });
+    persistState({ markDirty: false });
+  }
   if (notify) {
     setStorageFeedback(`Configuração "${trimmedName}" salva no servidor.`, 'success');
   }
@@ -4258,7 +4460,8 @@ async function handleSavedConfigurationsClick(event) {
     } else {
       rebuildCounters();
     }
-    persistState();
+    activateConfigurationEntry(config, { status: ACTIVE_CONFIG_STATUS.SYNCED });
+    persistState({ markDirty: false });
     setStorageFeedback(`Configuração "${config.name}" carregada com sucesso.`, 'success');
     return;
   }
@@ -4274,6 +4477,9 @@ async function handleSavedConfigurationsClick(event) {
     try {
       await deleteServerConfigurationEntry(configId);
       savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
+      if (state.activeConfigurationId === configId) {
+        resetActiveConfiguration();
+      }
       renderSavedConfigurations();
       setStorageFeedback(`Configuração "${config.name}" removida do servidor.`, 'warning');
     } catch (error) {
@@ -4296,6 +4502,47 @@ async function handleConfigSaveSubmit(event) {
   }
 }
 
+async function handleQuickConfigSave() {
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+
+  let targetName = (state.activeConfigurationName || '').trim();
+  if (!targetName) {
+    const response = prompt('Informe um nome para a configuração atual:');
+    const trimmed = (response || '').trim();
+    if (!trimmed) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Informe um nome para salvar a configuração atual.', 'warning');
+      return;
+    }
+    targetName = trimmed;
+    state.activeConfigurationName = targetName;
+    updateActiveConfigurationDisplay();
+  }
+
+  clearActiveConfigurationAutosave();
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SAVING, { force: true });
+
+  const result = await upsertSavedConfiguration(targetName, null, {
+    skipConfirmation: true,
+    notify: true
+  });
+
+  if (result === 'success') {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SYNCED, { force: true });
+  } else if (result === 'error') {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+    setStorageFeedback('Não foi possível sincronizar a configuração ativa.', 'error');
+  } else {
+    if (!state.activeConfigurationId) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+    } else {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+    }
+  }
+}
+
 function getPersistableSnapshot() {
   return {
     periods: state.periods,
@@ -4304,12 +4551,14 @@ function getPersistableSnapshot() {
     disciplines: state.disciplines,
     schedule: state.schedule,
     view: state.view,
-    selectedEntity: state.selectedEntity
+    selectedEntity: state.selectedEntity,
+    activeConfigurationId: state.activeConfigurationId,
+    activeConfigurationName: state.activeConfigurationName
   };
 }
 
 function persistState(options = {}) {
-  const { notify = false } = options;
+  const { notify = false, markDirty = true } = options;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableSnapshot()));
     localStorage.setItem(COUNTERS_KEY, JSON.stringify(counters));
@@ -4319,6 +4568,10 @@ function persistState(options = {}) {
   } catch (error) {
     console.error('Erro ao salvar dados no navegador.', error);
     setStorageFeedback('Não foi possível salvar os dados localmente.', 'error');
+  } finally {
+    if (markDirty) {
+      markActiveConfigurationDirty();
+    }
   }
 }
 
@@ -4367,6 +4620,13 @@ function applyStateFromData(data) {
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
+  state.activeConfigurationId = typeof data.activeConfigurationId === 'string' ? data.activeConfigurationId : '';
+  state.activeConfigurationName = typeof data.activeConfigurationName === 'string' ? data.activeConfigurationName : '';
+  const hasActiveConfiguration = state.activeConfigurationId && state.activeConfigurationName;
+  updateActiveConfigurationStatus(
+    hasActiveConfiguration ? ACTIVE_CONFIG_STATUS.SYNCED : ACTIVE_CONFIG_STATUS.IDLE,
+    { force: true }
+  );
   state.assignmentEditing = null;
   state.entityEditing = null;
   state.selectedSlots = new Set();
@@ -4408,7 +4668,7 @@ function restoreStateFromStorage(options = {}) {
     } else {
       rebuildCounters();
     }
-    persistState();
+    persistState({ markDirty: false });
     if (notify) {
       setStorageFeedback('Configuração carregada do navegador.', 'success');
     }
@@ -4549,6 +4809,7 @@ function clearAllData() {
   state.assignmentEditing = null;
   state.entityEditing = null;
   clearSelectedSlots();
+  resetActiveConfiguration();
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
   elements.viewTypeSelect.value = state.view;
   professorFormDisciplineIds.clear();
@@ -4576,13 +4837,18 @@ function bindStorageControls() {
   if (elements.savedConfigList) {
     elements.savedConfigList.addEventListener('click', handleSavedConfigurationsClick);
   }
+  if (elements.quickSaveButton) {
+    elements.quickSaveButton.addEventListener('click', handleQuickConfigSave);
+  }
   if (elements.refreshConfigsButton) {
     elements.refreshConfigsButton.addEventListener('click', () => {
       loadSavedConfigurationsFromServer({ notify: true });
     });
   }
   if (elements.saveBrowserButton) {
-    elements.saveBrowserButton.addEventListener('click', () => persistState({ notify: true }));
+    elements.saveBrowserButton.addEventListener('click', () =>
+      persistState({ notify: true, markDirty: false })
+    );
   }
   if (elements.restoreBrowserButton) {
     elements.restoreBrowserButton.addEventListener('click', () => restoreStateFromStorage({ notify: true }));
