@@ -1,10 +1,27 @@
+const MEETING_TYPES = [
+  { id: 'meeting-colegiado', name: 'Colegiado', color: '#277da1' },
+  { id: 'meeting-nde', name: 'NDE', color: '#577590' },
+  { id: 'meeting-coordenacao', name: 'Coordenação', color: '#f3722c' }
+];
+
+const MEETING_TYPE_ID_SET = new Set(MEETING_TYPES.map((type) => type.id));
+
+function createDefaultMeetings() {
+  return MEETING_TYPES.map((type) => ({
+    id: type.id,
+    name: type.name,
+    meetingTypeId: type.id,
+    professorIds: [],
+    roomId: ''
+  }));
+}
+
 const state = {
   periods: [],
   professors: [],
   rooms: [],
   disciplines: [],
-  meetingTypes: [],
-  meetings: [],
+  meetings: createDefaultMeetings(),
   schedule: {}, // periodId -> { slotKey: { disciplineId, professorId, roomId } }
   meetingSchedule: {}, // meetingId -> { slotKey: { professorIds: [], roomId: '' } }
   view: 'period',
@@ -23,7 +40,6 @@ let counters = {
   professor: 1,
   room: 1,
   discipline: 1,
-  meetingType: 1,
   meeting: 1
 };
 
@@ -47,7 +63,6 @@ const searchQueries = {
   professor: '',
   room: '',
   discipline: '',
-  meetingType: '',
   meeting: ''
 };
 
@@ -340,6 +355,7 @@ const COUNTERS_KEY = 'academic-planner-counters-v1';
 const CONFIG_API_URL = '/api/configurations';
 
 const professorFormDisciplineIds = new Set();
+const professorFormMeetingTypeIds = new Set();
 
 function sanitizeDisciplineIdList(list) {
   const seen = new Set();
@@ -368,6 +384,20 @@ function sanitizeProfessorIdList(list) {
   return result;
 }
 
+function sanitizeMeetingTypeIdList(list) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(list) ? list : [])
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .forEach((value) => {
+      if (!value || seen.has(value)) return;
+      if (!MEETING_TYPE_ID_SET.has(value)) return;
+      seen.add(value);
+      result.push(value);
+    });
+  return result;
+}
+
 function normalizeMeetingTypeRecord(record) {
   if (!record || typeof record !== 'object') return null;
   const id = typeof record.id === 'string' ? record.id.trim() : '';
@@ -380,12 +410,39 @@ function normalizeMeetingTypeRecord(record) {
   };
 }
 
-function normalizeMeetingRecord(record) {
+function mapMeetingTypeIdByName(name) {
+  const normalized = normalizeText(name);
+  if (!normalized) return '';
+  const match = MEETING_TYPES.find((type) => normalizeText(type.name) === normalized);
+  return match ? match.id : '';
+}
+
+function normalizeMeetingTypeId(rawId, legacyMap = new Map(), options = {}) {
+  const { fallbackToDefault = true } = options;
+  const candidate = typeof rawId === 'string' ? rawId.trim() : '';
+  if (MEETING_TYPE_ID_SET.has(candidate)) {
+    return candidate;
+  }
+  const legacy = legacyMap.get(candidate);
+  if (legacy) {
+    const mapped = mapMeetingTypeIdByName(legacy.name) || mapMeetingTypeIdByName(legacy.id);
+    if (mapped) {
+      return mapped;
+    }
+  }
+  const fallback = mapMeetingTypeIdByName(candidate);
+  if (fallback) {
+    return fallback;
+  }
+  return fallbackToDefault ? MEETING_TYPES[0]?.id || '' : '';
+}
+
+function normalizeMeetingRecord(record, legacyTypeMap = new Map()) {
   if (!record || typeof record !== 'object') return null;
   const id = typeof record.id === 'string' ? record.id.trim() : '';
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   if (!id || !name) return null;
-  const meetingTypeId = typeof record.meetingTypeId === 'string' ? record.meetingTypeId.trim() : '';
+  const meetingTypeId = normalizeMeetingTypeId(record.meetingTypeId, legacyTypeMap);
   const professorIds = sanitizeProfessorIdList(record.professorIds || []);
   const roomId = typeof record.roomId === 'string' ? record.roomId.trim() : '';
   return {
@@ -421,7 +478,7 @@ function sanitizeMeetingSchedulePayload(payload) {
   return result;
 }
 
-function normalizeProfessorRecord(professor) {
+function normalizeProfessorRecord(professor, legacyMeetingTypeMap = new Map()) {
   if (!professor || typeof professor !== 'object') return null;
   const legacyDiscipline =
     typeof professor.disciplineId === 'string' && professor.disciplineId
@@ -430,13 +487,20 @@ function normalizeProfessorRecord(professor) {
   const disciplineIds = sanitizeDisciplineIdList(
     Array.isArray(professor.disciplineIds) ? professor.disciplineIds : legacyDiscipline
   );
+  const rawMeetingTypeIds = Array.isArray(professor.meetingTypeIds) ? professor.meetingTypeIds : [];
+  const mappedMeetingTypeIds = rawMeetingTypeIds
+    .map((value) => normalizeMeetingTypeId(value, legacyMeetingTypeMap, { fallbackToDefault: false }))
+    .filter(Boolean);
+  const meetingTypeIds = sanitizeMeetingTypeIdList(mappedMeetingTypeIds);
   const base = { ...professor };
   delete base.disciplineId;
   delete base.disciplineIds;
   delete base.isCourseArea;
+  delete base.meetingTypeIds;
   return {
     ...base,
     disciplineIds,
+    meetingTypeIds,
     isCourseArea: Boolean(professor.isCourseArea)
   };
 }
@@ -454,6 +518,18 @@ function getProfessorDisciplineLabels(professor) {
     .map((discipline) => formatDisciplineLabel(discipline));
 }
 
+function getProfessorMeetingTypeIds(professor) {
+  if (!professor) return [];
+  return sanitizeMeetingTypeIdList(professor.meetingTypeIds);
+}
+
+function getProfessorMeetingTypeLabels(professor) {
+  return getProfessorMeetingTypeIds(professor)
+    .map((id) => getMeetingTypeById(id))
+    .filter(Boolean)
+    .map((type) => type.name);
+}
+
 function professorHasDiscipline(professor, disciplineId) {
   if (!disciplineId) return false;
   return getProfessorDisciplineIds(professor).includes(disciplineId);
@@ -464,6 +540,10 @@ function getProfessorDetailParts(professor) {
   const labels = getProfessorDisciplineLabels(professor);
   if (labels.length) {
     details.push(labels.join(', '));
+  }
+  const meetingLabels = getProfessorMeetingTypeLabels(professor);
+  if (meetingLabels.length) {
+    details.push(`Reuniões: ${meetingLabels.join(', ')}`);
   }
   if (professor?.isCourseArea) {
     details.push('Área do curso');
@@ -597,7 +677,6 @@ const entityCollections = {
   professor: 'professors',
   room: 'rooms',
   discipline: 'disciplines',
-  meetingType: 'meetingTypes',
   meeting: 'meetings'
 };
 
@@ -606,7 +685,6 @@ const elements = {
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
   disciplineForm: document.getElementById('discipline-form'),
-  meetingTypeForm: document.getElementById('meeting-type-form'),
   meetingForm: document.getElementById('meeting-form'),
   disciplineNameInput: document.getElementById('discipline-name'),
   disciplineCodeInput: document.getElementById('discipline-code'),
@@ -616,11 +694,11 @@ const elements = {
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
   disciplineList: document.getElementById('discipline-list'),
-  meetingTypeList: document.getElementById('meeting-type-list'),
   meetingList: document.getElementById('meeting-list'),
   professorDisciplineSelect: document.getElementById('professor-discipline'),
   professorDisciplineAdd: document.getElementById('professor-discipline-add'),
   professorDisciplineList: document.getElementById('professor-discipline-list'),
+  professorMeetingTypeGroup: document.getElementById('professor-meeting-types'),
   professorAreaCheckbox: document.getElementById('professor-area'),
   professorAreaFilter: document.getElementById('professor-filter-area'),
   entityMenu: document.querySelector('.entity-menu'),
@@ -636,10 +714,7 @@ const elements = {
   disciplinePeriodSelect: document.getElementById('discipline-period'),
   disciplinePeriodFilter: document.getElementById('discipline-filter-period'),
   roomPeriodFilter: document.getElementById('room-filter-period'),
-  meetingTypeSearch: document.getElementById('meeting-type-search'),
   meetingSearch: document.getElementById('meeting-search'),
-  meetingTypeColorInput: document.getElementById('meeting-type-color'),
-  meetingTypeNameInput: document.getElementById('meeting-type-name'),
   meetingNameInput: document.getElementById('meeting-name'),
   meetingTypeSelect: document.getElementById('meeting-type-select'),
   meetingProfessorSelect: document.getElementById('meeting-professors'),
@@ -927,6 +1002,11 @@ function matchesSearchQuery(item, type, query, filters = {}) {
     if (!matchesText && type === 'professor') {
       const labels = getProfessorDisciplineLabels(item || {});
       matchesText = labels.some((label) => normalizeText(label).includes(normalizedQuery));
+    }
+
+    if (!matchesText && type === 'professor') {
+      const meetingLabels = getProfessorMeetingTypeLabels(item || {});
+      matchesText = meetingLabels.some((label) => normalizeText(label).includes(normalizedQuery));
     }
 
     if (!matchesText && type === 'discipline') {
@@ -1412,7 +1492,6 @@ function sortAllCollections() {
   sortStateCollection('professor');
   sortStateCollection('room');
   sortStateCollection('discipline');
-  sortStateCollection('meetingType');
   sortStateCollection('meeting');
 }
 
@@ -1516,7 +1595,7 @@ function renderEntityList(list, container, type) {
     const li = document.createElement('li');
     li.className = 'entity-item';
     let usage = null;
-    const editable = !['meetingType', 'meeting'].includes(type);
+    const editable = type !== 'meeting';
     if (!editable && isEditing) {
       state.entityEditing = null;
       // eslint-disable-next-line no-param-reassign
@@ -1617,6 +1696,9 @@ function renderEntityList(list, container, type) {
         professorDisciplineEditor = createProfessorDisciplineEditor(item.disciplineIds);
         form.appendChild(professorDisciplineEditor.container);
 
+        const meetingTypeEditor = createProfessorMeetingTypeEditor(item.meetingTypeIds);
+        form.appendChild(meetingTypeEditor.container);
+
         const checkboxLabel = document.createElement('label');
         checkboxLabel.className = 'checkbox-field';
         areaCheckbox = document.createElement('input');
@@ -1676,6 +1758,10 @@ function renderEntityList(list, container, type) {
             ? professorDisciplineEditor.getSelectedIds()
             : [];
           updates.disciplineIds = sanitizeDisciplineIdList(selectedIds);
+          const selectedMeetingTypes = meetingTypeEditor
+            ? meetingTypeEditor.getSelectedIds()
+            : [];
+          updates.meetingTypeIds = sanitizeMeetingTypeIdList(selectedMeetingTypes);
           updates.isCourseArea = Boolean(areaCheckbox?.checked);
         }
 
@@ -1692,14 +1778,6 @@ function renderEntityList(list, container, type) {
 
       if (type === 'discipline') {
         const color = getDisciplineColor(item);
-        if (color) {
-          const swatch = document.createElement('span');
-          swatch.className = 'entity-color-swatch';
-          swatch.style.setProperty('--discipline-color', color);
-          heading.appendChild(swatch);
-        }
-      } else if (type === 'meetingType') {
-        const color = getMeetingTypeColor(item);
         if (color) {
           const swatch = document.createElement('span');
           swatch.className = 'entity-color-swatch';
@@ -1758,14 +1836,6 @@ function renderEntityList(list, container, type) {
             }
           }
         }
-      } else if (type === 'meetingType') {
-        const relatedMeetings = state.meetings.filter((meeting) => meeting.meetingTypeId === item.id);
-        const meta = document.createElement('span');
-        meta.className = 'entity-meta';
-        meta.textContent = `${relatedMeetings.length} reunião${relatedMeetings.length === 1 ? '' : 's'}`;
-        info.appendChild(meta);
-      }
-
       if (type === 'professor') {
         if (item.isCourseArea) {
           const badge = document.createElement('span');
@@ -1780,6 +1850,13 @@ function renderEntityList(list, container, type) {
           ? `Disciplinas vinculadas: ${labels.join(', ')}`
           : 'Sem disciplinas vinculadas';
         info.appendChild(meta);
+        const meetingLabels = getProfessorMeetingTypeLabels(item);
+        const meetingMeta = document.createElement('span');
+        meetingMeta.className = 'entity-meta';
+        meetingMeta.textContent = meetingLabels.length
+          ? `Tipos de reunião: ${meetingLabels.join(', ')}`
+          : 'Sem tipos de reunião vinculados';
+        info.appendChild(meetingMeta);
       } else if (type === 'meeting') {
         const meetingType = getMeetingTypeById(item.meetingTypeId);
         if (meetingType) {
@@ -1964,6 +2041,43 @@ function createProfessorDisciplineEditor(initialIds = []) {
   };
 }
 
+function createProfessorMeetingTypeEditor(initialIds = []) {
+  const fieldset = document.createElement('fieldset');
+  fieldset.className = 'professor-meeting-type-editor';
+
+  const legend = document.createElement('legend');
+  legend.textContent = 'Tipos de reunião';
+  fieldset.appendChild(legend);
+
+  const selected = new Set(sanitizeMeetingTypeIdList(initialIds));
+
+  MEETING_TYPES.forEach((type) => {
+    const label = document.createElement('label');
+    label.className = 'checkbox-field';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = type.id;
+    input.checked = selected.has(type.id);
+    input.addEventListener('change', (event) => {
+      if (event.target.checked) {
+        selected.add(type.id);
+      } else {
+        selected.delete(type.id);
+      }
+    });
+    const span = document.createElement('span');
+    span.textContent = type.name;
+    label.appendChild(input);
+    label.appendChild(span);
+    fieldset.appendChild(label);
+  });
+
+  return {
+    container: fieldset,
+    getSelectedIds: () => Array.from(selected)
+  };
+}
+
 function renderProfessorFormDisciplineChips() {
   const { professorDisciplineList } = elements;
   if (!professorDisciplineList) return;
@@ -2001,32 +2115,76 @@ function renderProfessorFormDisciplineChips() {
     });
 }
 
+function renderProfessorFormMeetingTypes() {
+  const { professorMeetingTypeGroup } = elements;
+  if (!professorMeetingTypeGroup) return;
+  const legendText = professorMeetingTypeGroup.querySelector('legend')?.textContent || 'Tipos de reunião';
+  professorMeetingTypeGroup.innerHTML = '';
+  const legend = document.createElement('legend');
+  legend.textContent = legendText;
+  professorMeetingTypeGroup.appendChild(legend);
+  MEETING_TYPES.forEach((type) => {
+    const label = document.createElement('label');
+    label.className = 'checkbox-field';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = type.id;
+    input.checked = professorFormMeetingTypeIds.has(type.id);
+    label.appendChild(input);
+    const span = document.createElement('span');
+    span.textContent = type.name;
+    label.appendChild(span);
+    professorMeetingTypeGroup.appendChild(label);
+  });
+}
+
 function setupProfessorFormControls() {
-  const { professorDisciplineSelect, professorDisciplineAdd, professorDisciplineList } = elements;
-  if (!professorDisciplineSelect || !professorDisciplineAdd || !professorDisciplineList) return;
+  const { professorDisciplineSelect, professorDisciplineAdd, professorDisciplineList, professorMeetingTypeGroup } =
+    elements;
 
-  professorDisciplineAdd.addEventListener('click', () => {
-    const value = professorDisciplineSelect.value;
-    if (!value) return;
-    const exists = state.disciplines.some((discipline) => discipline.id === value);
-    if (!exists) {
+  if (professorDisciplineSelect && professorDisciplineAdd && professorDisciplineList) {
+    professorDisciplineAdd.addEventListener('click', () => {
+      const value = professorDisciplineSelect.value;
+      if (!value) return;
+      const exists = state.disciplines.some((discipline) => discipline.id === value);
+      if (!exists) {
+        professorDisciplineSelect.value = '';
+        return;
+      }
+      professorFormDisciplineIds.add(value);
       professorDisciplineSelect.value = '';
-      return;
-    }
-    professorFormDisciplineIds.add(value);
-    professorDisciplineSelect.value = '';
-    renderProfessorFormDisciplineChips();
-  });
+      renderProfessorFormDisciplineChips();
+    });
 
-  professorDisciplineList.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-id]');
-    if (!button) return;
-    const { id } = button.dataset;
-    professorFormDisciplineIds.delete(id);
-    renderProfessorFormDisciplineChips();
-  });
+    professorDisciplineList.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-id]');
+      if (!button) return;
+      const { id } = button.dataset;
+      professorFormDisciplineIds.delete(id);
+      renderProfessorFormDisciplineChips();
+    });
+  }
+
+  if (professorMeetingTypeGroup) {
+    professorMeetingTypeGroup.addEventListener('change', (event) => {
+      const input = event.target.closest('input[type="checkbox"][value]');
+      if (!input) return;
+      const { value } = input;
+      if (!MEETING_TYPE_ID_SET.has(value)) {
+        input.checked = false;
+        return;
+      }
+      if (input.checked) {
+        professorFormMeetingTypeIds.add(value);
+      } else {
+        professorFormMeetingTypeIds.delete(value);
+      }
+      renderProfessorFormMeetingTypes();
+    });
+  }
 
   renderProfessorFormDisciplineChips();
+  renderProfessorFormMeetingTypes();
 }
 
 function openManagementPanel(panelKey) {
@@ -2118,7 +2276,6 @@ function refreshLists() {
   renderEntityList(state.professors, elements.professorList, 'professor');
   renderEntityList(state.rooms, elements.roomList, 'room');
   renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
-  renderEntityList(state.meetingTypes, elements.meetingTypeList, 'meetingType');
   renderEntityList(state.meetings, elements.meetingList, 'meeting');
   updateDisciplinePeriodOptions();
   updateProfessorDisciplineOptions();
@@ -2197,6 +2354,8 @@ function saveEntityEdit(type, id, updates) {
     entity.disciplineIds = sanitized.filter((value) =>
       state.disciplines.some((discipline) => discipline.id === value)
     );
+    const sanitizedMeetingTypes = sanitizeMeetingTypeIdList(updates.meetingTypeIds || []);
+    entity.meetingTypeIds = sanitizedMeetingTypes;
     entity.isCourseArea = Boolean(updates.isCourseArea);
   }
 
@@ -2214,12 +2373,6 @@ function confirmRemoval(type, item) {
     if (relatedDisciplines.length) {
       message =
         `Remover o período "${item.name}" também apagará ${relatedDisciplines.length} disciplina(s) vinculada(s). Continuar?`;
-    }
-  } else if (type === 'meetingType') {
-    const relatedMeetings = state.meetings.filter((meeting) => meeting.meetingTypeId === item.id);
-    if (relatedMeetings.length) {
-      message =
-        `Remover o tipo de reunião "${item.name}" também apagará ${relatedMeetings.length} reunião(ões) vinculada(s). Continuar?`;
     }
   } else if (type === 'meeting') {
     message = `Remover a reunião "${item.name}" excluirá todos os horários associados. Continuar?`;
@@ -2325,16 +2478,6 @@ function deleteEntity(type, id) {
     purgeSchedule((periodId, entry) => entry.professorId === id);
   } else if (type === 'room') {
     purgeSchedule((periodId, entry) => entry.roomId === id);
-  } else if (type === 'meetingType') {
-    const removedMeetingIds = state.meetings
-      .filter((meeting) => meeting.meetingTypeId === id)
-      .map((meeting) => meeting.id);
-    if (removedMeetingIds.length) {
-      state.meetings = state.meetings.filter((meeting) => meeting.meetingTypeId !== id);
-      removedMeetingIds.forEach((meetingId) => {
-        delete state.meetingSchedule[meetingId];
-      });
-    }
   } else if (type === 'meeting') {
     delete state.meetingSchedule[id];
   }
@@ -2430,13 +2573,13 @@ function updateMeetingTypeOptions() {
   if (meetingTypeSelect) {
     const currentValue = meetingTypeSelect.value;
     meetingTypeSelect.innerHTML = '<option value="">Tipo de reunião</option>';
-    state.meetingTypes.forEach((type) => {
+    MEETING_TYPES.forEach((type) => {
       const option = document.createElement('option');
       option.value = type.id;
       option.textContent = type.name;
       meetingTypeSelect.appendChild(option);
     });
-    const exists = state.meetingTypes.some((type) => type.id === currentValue);
+    const exists = MEETING_TYPE_ID_SET.has(currentValue);
     meetingTypeSelect.value = exists ? currentValue : '';
   }
 }
@@ -2502,6 +2645,10 @@ function updateEntitySelector() {
       if (item.isCourseArea) {
         label = `${label} • Área do curso`;
       }
+      const meetingLabels = getProfessorMeetingTypeLabels(item);
+      if (meetingLabels.length) {
+        label = `${label} • Reuniões: ${meetingLabels.join(', ')}`;
+      }
     } else if (state.view === 'meeting') {
       const meetingType = getMeetingTypeById(item.meetingTypeId);
       const professors = Array.isArray(item.professorIds)
@@ -2554,15 +2701,11 @@ function getRoomById(id) {
 }
 
 function getMeetingTypeById(id) {
-  return state.meetingTypes.find((type) => type.id === id) || null;
+  return MEETING_TYPES.find((type) => type.id === id) || null;
 }
 
 function getMeetingById(id) {
   return state.meetings.find((meeting) => meeting.id === id) || null;
-}
-
-function getMeetingTypeColor(meetingType) {
-  return normalizeHexColor(meetingType?.color);
 }
 
 function slotKey(dayKey, slotCode) {
@@ -5403,6 +5546,7 @@ async function handleSavedConfigurationsClick(event) {
     applyStateFromData(safeClone(config.state));
     if (config.counters && typeof config.counters === 'object') {
       counters = { ...counters, ...safeClone(config.counters) };
+      delete counters.meetingType;
     } else {
       rebuildCounters();
     }
@@ -5495,7 +5639,6 @@ function getPersistableSnapshot() {
     professors: state.professors,
     rooms: state.rooms,
     disciplines: state.disciplines,
-    meetingTypes: state.meetingTypes,
     meetings: state.meetings,
     schedule: state.schedule,
     meetingSchedule: state.meetingSchedule,
@@ -5542,7 +5685,6 @@ function rebuildCounters() {
     professor: nextCounterValue(state.professors, 'professor'),
     room: nextCounterValue(state.rooms, 'room'),
     discipline: nextCounterValue(state.disciplines, 'discipline'),
-    meetingType: nextCounterValue(state.meetingTypes, 'meetingType'),
     meeting: nextCounterValue(state.meetings, 'meeting')
   };
 }
@@ -5558,9 +5700,14 @@ function applyStateFromData(data) {
         requiredSlots: normalizeRequiredSlots(discipline?.requiredSlots)
       }))
     : [];
+  const legacyMeetingTypes = Array.isArray(data.meetingTypes)
+    ? data.meetingTypes.map((record) => normalizeMeetingTypeRecord(record)).filter(Boolean)
+    : [];
+  const legacyMeetingTypeMap = new Map(legacyMeetingTypes.map((type) => [type.id, type]));
+
   state.professors = Array.isArray(data.professors)
     ? data.professors
-        .map((professor) => normalizeProfessorRecord(professor))
+        .map((professor) => normalizeProfessorRecord(professor, legacyMeetingTypeMap))
         .filter(Boolean)
         .map((professor) => ({
           ...professor,
@@ -5568,12 +5715,14 @@ function applyStateFromData(data) {
         }))
     : [];
   state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
-  state.meetingTypes = Array.isArray(data.meetingTypes)
-    ? data.meetingTypes.map((record) => normalizeMeetingTypeRecord(record)).filter(Boolean)
+  const normalizedMeetings = Array.isArray(data.meetings)
+    ? data.meetings.map((record) => normalizeMeetingRecord(record, legacyMeetingTypeMap)).filter(Boolean)
     : [];
-  state.meetings = Array.isArray(data.meetings)
-    ? data.meetings.map((record) => normalizeMeetingRecord(record)).filter(Boolean)
-    : [];
+  const meetingMap = new Map(createDefaultMeetings().map((meeting) => [meeting.id, { ...meeting }]));
+  normalizedMeetings.forEach((meeting) => {
+    meetingMap.set(meeting.id, meeting);
+  });
+  state.meetings = Array.from(meetingMap.values());
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.meetingSchedule = sanitizeMeetingSchedulePayload(data.meetingSchedule);
   state.view = data.view || 'period';
@@ -5591,6 +5740,7 @@ function applyStateFromData(data) {
   state.multiSelectMode = false;
   elements.viewTypeSelect.value = state.view;
   professorFormDisciplineIds.clear();
+  professorFormMeetingTypeIds.clear();
   if (elements.professorDisciplineSelect) {
     elements.professorDisciplineSelect.value = '';
   }
@@ -5598,6 +5748,7 @@ function applyStateFromData(data) {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
+  renderProfessorFormMeetingTypes();
   ensureDisciplineColors();
   sortAllCollections();
   refreshLists();
@@ -5621,11 +5772,12 @@ function restoreStateFromStorage(options = {}) {
     applyStateFromData(parsed);
     const counterRaw = localStorage.getItem(COUNTERS_KEY);
     if (counterRaw) {
-      const parsedCounters = JSON.parse(counterRaw);
-      counters = { ...counters, ...parsedCounters };
-    } else {
-      rebuildCounters();
-    }
+    const parsedCounters = JSON.parse(counterRaw);
+    counters = { ...counters, ...parsedCounters };
+    delete counters.meetingType;
+  } else {
+    rebuildCounters();
+  }
     persistState({ markDirty: false });
     if (notify) {
       setStorageFeedback('Configuração carregada do navegador.', 'success');
@@ -5761,8 +5913,7 @@ function clearAllData() {
   state.professors = [];
   state.rooms = [];
   state.disciplines = [];
-  state.meetingTypes = [];
-  state.meetings = [];
+  state.meetings = createDefaultMeetings();
   state.schedule = {};
   state.meetingSchedule = {};
   state.view = 'period';
@@ -5771,9 +5922,10 @@ function clearAllData() {
   state.entityEditing = null;
   clearSelectedSlots();
   resetActiveConfiguration();
-  counters = { period: 1, professor: 1, room: 1, discipline: 1, meetingType: 1, meeting: 1 };
+  counters = { period: 1, professor: 1, room: 1, discipline: 1, meeting: 1 };
   elements.viewTypeSelect.value = state.view;
   professorFormDisciplineIds.clear();
+  professorFormMeetingTypeIds.clear();
   if (elements.professorDisciplineSelect) {
     elements.professorDisciplineSelect.value = '';
   }
@@ -5781,6 +5933,7 @@ function clearAllData() {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
+  renderProfessorFormMeetingTypes();
   resetSearchFilters();
   refreshLists();
   updateEntitySelector();
@@ -5905,7 +6058,6 @@ function bindSearchFilters() {
     ['professor', elements.professorSearch],
     ['room', elements.roomSearch],
     ['discipline', elements.disciplineSearch],
-    ['meetingType', elements.meetingTypeSearch],
     ['meeting', elements.meetingSearch]
   ];
 
@@ -5947,7 +6099,6 @@ function resetSearchFilters() {
   searchQueries.professor = '';
   searchQueries.room = '';
   searchQueries.discipline = '';
-  searchQueries.meetingType = '';
   searchQueries.meeting = '';
 
   searchFilters.professor.onlyCourseArea = false;
@@ -5958,7 +6109,6 @@ function resetSearchFilters() {
   if (elements.professorSearch) elements.professorSearch.value = '';
   if (elements.roomSearch) elements.roomSearch.value = '';
   if (elements.disciplineSearch) elements.disciplineSearch.value = '';
-  if (elements.meetingTypeSearch) elements.meetingTypeSearch.value = '';
   if (elements.meetingSearch) elements.meetingSearch.value = '';
   if (elements.professorAreaFilter) elements.professorAreaFilter.checked = false;
   if (elements.disciplinePeriodFilter) elements.disciplinePeriodFilter.value = '';
@@ -6008,18 +6158,22 @@ function bindForms() {
         state.disciplines.some((discipline) => discipline.id === id)
       );
       const areaCheckbox = elements.professorAreaCheckbox;
+      const selectedMeetingTypes = sanitizeMeetingTypeIdList(Array.from(professorFormMeetingTypeIds));
       state.professors.push({
         id: generateId('professor'),
         name,
         disciplineIds: validIds,
+        meetingTypeIds: selectedMeetingTypes,
         isCourseArea: Boolean(areaCheckbox?.checked)
       });
       input.value = '';
       professorFormDisciplineIds.clear();
+      professorFormMeetingTypeIds.clear();
       if (elements.professorDisciplineSelect) {
         elements.professorDisciplineSelect.value = '';
       }
       renderProfessorFormDisciplineChips();
+      renderProfessorFormMeetingTypes();
       if (areaCheckbox) {
         areaCheckbox.checked = false;
       }
@@ -6099,24 +6253,6 @@ function bindForms() {
       }
       resetDisciplineColorInput();
       updateDisciplineColorSuggestion({ force: true });
-      refreshLists();
-      persistState();
-    });
-  }
-
-  if (elements.meetingTypeForm) {
-    elements.meetingTypeForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const nameInput = elements.meetingTypeNameInput;
-      if (!nameInput) return;
-      const name = nameInput.value.trim();
-      if (!name) return;
-      const color = normalizeHexColor(elements.meetingTypeColorInput?.value || '');
-      state.meetingTypes.push({ id: generateId('meetingType'), name, color });
-      nameInput.value = '';
-      if (elements.meetingTypeColorInput) {
-        elements.meetingTypeColorInput.value = '#277da1';
-      }
       refreshLists();
       persistState();
     });

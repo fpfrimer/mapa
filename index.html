@@ -165,18 +165,6 @@
         <button
           type="button"
           class="menu-button"
-          data-panel="meeting-types"
-          aria-controls="panel-meeting-types"
-          aria-expanded="false"
-          aria-label="Tipos de reunião"
-          title="Gerenciar tipos de reunião"
-        >
-          <span class="icon" aria-hidden="true">🗒️</span>
-          <span class="label visually-hidden">Tipos de reunião</span>
-        </button>
-        <button
-          type="button"
-          class="menu-button"
           data-panel="meetings"
           aria-controls="panel-meetings"
           aria-expanded="false"
@@ -275,6 +263,9 @@
             </div>
             <ul id="professor-discipline-list" class="chip-list"></ul>
           </div>
+          <fieldset id="professor-meeting-types" class="checkbox-group professor-meeting-types">
+            <legend>Tipos de reunião</legend>
+          </fieldset>
           <label class="checkbox-field">
             <input type="checkbox" id="professor-area" />
             <span>Docente da área do curso</span>
@@ -340,35 +331,6 @@
         </div>
         <div class="list-container">
           <ul id="discipline-list" class="entity-list"></ul>
-        </div>
-      </section>
-
-      <section
-        id="panel-meeting-types"
-        class="panel-section"
-        data-panel="meeting-types"
-        data-title="Tipos de reunião"
-        hidden
-      >
-        <h3 class="visually-hidden">Tipos de reunião</h3>
-        <form id="meeting-type-form" class="inline-form">
-          <input type="text" id="meeting-type-name" placeholder="Nome do tipo" required />
-          <label class="color-picker-field" for="meeting-type-color">
-            <span>Cor</span>
-            <input type="color" id="meeting-type-color" name="meeting-type-color" value="#277da1" />
-          </label>
-          <button type="submit">Adicionar</button>
-        </form>
-        <div class="list-tools">
-          <input
-            type="search"
-            id="meeting-type-search"
-            placeholder="Buscar tipos de reunião"
-            aria-label="Buscar tipos de reunião"
-          />
-        </div>
-        <div class="list-container">
-          <ul id="meeting-type-list" class="entity-list"></ul>
         </div>
       </section>
 
