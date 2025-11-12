@@ -13,6 +13,10 @@
   --tarde: #ffe0b2;
   --noite: #d1ecf1;
   --rail-width: clamp(3.75rem, 6vw, 6.75rem);
+  --menu-icon-size: calc(var(--rail-width) * 0.38);
+  --toolbar-icon-size: clamp(0.95rem, 2.3vw, 1.15rem);
+  --action-icon-size: clamp(1rem, 2vw, 1.2rem);
+  --small-icon-size: clamp(0.8rem, 1.8vw, 0.95rem);
 }
 
 body.theme-dark {
@@ -54,6 +58,35 @@ body.theme-dark {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.icon {
+  display: block;
+  width: var(--action-icon-size);
+  height: var(--action-icon-size);
+  max-width: 100%;
+  color: inherit;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.icon use {
+  pointer-events: none;
+}
+
+.icon--menu {
+  width: var(--menu-icon-size);
+  height: var(--menu-icon-size);
+}
+
+.icon--toolbar {
+  width: var(--toolbar-icon-size);
+  height: var(--toolbar-icon-size);
+}
+
+.icon--small {
+  width: var(--small-icon-size);
+  height: var(--small-icon-size);
 }
 
 body {
@@ -143,11 +176,6 @@ main {
   position: relative;
 }
 
-.menu-button .icon {
-  font-size: 1.35rem;
-  line-height: 1;
-}
-
 .menu-button:hover,
 .menu-button:focus-visible {
   background: rgba(41, 98, 255, 0.12);
@@ -159,6 +187,18 @@ main {
 .menu-button--toggle[aria-pressed='true'] {
   background: rgba(41, 98, 255, 0.2);
   color: var(--primary-dark);
+}
+
+body.theme-dark .menu-button:hover,
+body.theme-dark .menu-button:focus-visible {
+  background: rgba(59, 130, 246, 0.22);
+  color: var(--primary-dark);
+}
+
+body.theme-dark .menu-button.active,
+body.theme-dark .menu-button--toggle[aria-pressed='true'] {
+  background: rgba(59, 130, 246, 0.35);
+  color: #fff;
 }
 
 .menu-divider {
@@ -573,9 +613,14 @@ body.theme-dark .top-bar__section--selection {
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
-.icon-button span[aria-hidden="true"] {
-  font-size: 1rem;
-  line-height: 1;
+.icon-button .icon {
+  width: var(--action-icon-size);
+  height: var(--action-icon-size);
+}
+
+.icon-button.small .icon {
+  width: var(--small-icon-size);
+  height: var(--small-icon-size);
 }
 
 .icon-button:hover {
@@ -786,6 +831,9 @@ button.primary:hover {
 }
 
 .top-bar__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 999px;
@@ -796,9 +844,9 @@ button.primary:hover {
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.top-bar__icon-button .icon[aria-hidden="true"] {
-  font-size: 1rem;
-  line-height: 1;
+.top-bar__icon-button .icon {
+  width: var(--toolbar-icon-size);
+  height: var(--toolbar-icon-size);
 }
 
 .top-bar__icon-button:hover {
