@@ -1756,6 +1756,11 @@ body.theme-dark .top-bar__icon-button.is-active {
   color: #2e7d32;
 }
 
+.badge.discipline {
+  background: rgba(94, 53, 177, 0.15);
+  color: #4527a0;
+}
+
 .badge.docente {
   background: rgba(255, 152, 0, 0.18);
   color: #ef6c00;

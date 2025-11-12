@@ -2591,7 +2591,7 @@ function collectAssignmentErrors(periodId, data) {
   return [...new Set(errors)];
 }
 
-function buildCellContent(assignments) {
+function buildCellContent(assignments, view) {
   if (!assignments.length) {
     return { html: '<span class="slot-empty">Disponível</span>', errors: [] };
   }
@@ -2605,6 +2605,16 @@ function buildCellContent(assignments) {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+  const escapeHtml = (value) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const hidePeriodLine = view === 'period';
+  const hideProfessorLine = view === 'professor';
+  const hideRoomLine = view === 'room';
+
   const parts = assignments.map(({ periodId, data }) => {
     const discipline = getDisciplineById(data.disciplineId);
     const professor = getProfessorById(data.professorId);
@@ -2613,13 +2623,20 @@ function buildCellContent(assignments) {
     const disciplineLabel = discipline ? formatDisciplineLabel(discipline) : '';
     const lines = [];
 
-    if (period) {
+    if (discipline) {
+      const disciplineText = escapeHtml(disciplineLabel);
+      lines.push(
+        `<span class="slot-line slot-line-discipline"><span class="badge discipline">${disciplineText}</span></span>`
+      );
+    }
+
+    if (period && !hidePeriodLine) {
       lines.push(
         `<span class="slot-line slot-line-period"><span class="badge period">${period.name}</span></span>`
       );
     }
 
-    if (professor) {
+    if (professor && !hideProfessorLine) {
       let professorLine = `<span class="badge docente">${professor.name}`;
       if (professor.isCourseArea) {
         professorLine +=
@@ -2629,7 +2646,7 @@ function buildCellContent(assignments) {
       lines.push(`<span class="slot-line slot-line-professor">${professorLine}</span>`);
     }
 
-    if (room) {
+    if (room && !hideRoomLine) {
       lines.push(
         `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
       );
@@ -2753,7 +2770,7 @@ function renderSchedule() {
         const key = slotKey(day.key, slot.code);
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
         const draggableInfo = getDraggableAssignmentInfo(assignments);
-        const cellContent = buildCellContent(assignments);
+        const cellContent = buildCellContent(assignments, state.view);
         const disciplineIds = assignments
           .map((entry) => entry?.data?.disciplineId)
           .filter(Boolean);
