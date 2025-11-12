@@ -18,6 +18,7 @@
             <option value="period">Período</option>
             <option value="professor">Docente</option>
             <option value="room">Sala</option>
+            <option value="meeting">Reunião</option>
           </select>
         </div>
 
@@ -134,6 +135,30 @@
         >
           <span class="icon" aria-hidden="true">📚</span>
           <span class="label visually-hidden">Disciplinas</span>
+        </button>
+        <button
+          type="button"
+          class="menu-button"
+          data-panel="meeting-types"
+          aria-controls="panel-meeting-types"
+          aria-expanded="false"
+          aria-label="Tipos de reunião"
+          title="Gerenciar tipos de reunião"
+        >
+          <span class="icon" aria-hidden="true">🗒️</span>
+          <span class="label visually-hidden">Tipos de reunião</span>
+        </button>
+        <button
+          type="button"
+          class="menu-button"
+          data-panel="meetings"
+          aria-controls="panel-meetings"
+          aria-expanded="false"
+          aria-label="Reuniões"
+          title="Gerenciar reuniões"
+        >
+          <span class="icon" aria-hidden="true">🤝</span>
+          <span class="label visually-hidden">Reuniões</span>
         </button>
 
         <div class="menu-divider" role="presentation"></div>
@@ -286,6 +311,61 @@
         </div>
       </section>
 
+      <section
+        id="panel-meeting-types"
+        class="panel-section"
+        data-panel="meeting-types"
+        data-title="Tipos de reunião"
+        hidden
+      >
+        <h3 class="visually-hidden">Tipos de reunião</h3>
+        <form id="meeting-type-form" class="inline-form">
+          <input type="text" id="meeting-type-name" placeholder="Nome do tipo" required />
+          <label class="color-picker-field" for="meeting-type-color">
+            <span>Cor</span>
+            <input type="color" id="meeting-type-color" name="meeting-type-color" value="#277da1" />
+          </label>
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input
+            type="search"
+            id="meeting-type-search"
+            placeholder="Buscar tipos de reunião"
+            aria-label="Buscar tipos de reunião"
+          />
+        </div>
+        <div class="list-container">
+          <ul id="meeting-type-list" class="entity-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-meetings" class="panel-section" data-panel="meetings" data-title="Reuniões" hidden>
+        <h3 class="visually-hidden">Reuniões</h3>
+        <form id="meeting-form" class="inline-form meeting-form">
+          <input type="text" id="meeting-name" placeholder="Nome da reunião" required />
+          <select id="meeting-type-select" required>
+            <option value="">Tipo de reunião</option>
+          </select>
+          <select id="meeting-professors" multiple size="5" aria-label="Selecione docentes participantes"></select>
+          <select id="meeting-room">
+            <option value="">Sala (opcional)</option>
+          </select>
+          <button type="submit">Adicionar</button>
+        </form>
+        <div class="list-tools">
+          <input
+            type="search"
+            id="meeting-search"
+            placeholder="Buscar reuniões"
+            aria-label="Buscar reuniões"
+          />
+        </div>
+        <div class="list-container">
+          <ul id="meeting-list" class="entity-list"></ul>
+        </div>
+      </section>
+
       <section id="panel-settings" class="panel-section data-section" data-panel="settings" data-title="Configurações" hidden>
         <h3 class="visually-hidden">Configurações</h3>
         <p class="section-helper">Salve o cronograma para continuar a edição depois ou compartilhar com outras pessoas.</p>
@@ -334,64 +414,77 @@
           </div>
         </div>
 
-        <div class="form-field">
-          <label for="assignment-discipline-search">Disciplina</label>
-          <div class="searchable-select" data-select="assignment-discipline">
-            <div class="searchable-input-wrapper">
-              <input
-                type="search"
-                id="assignment-discipline-search"
-                class="searchable-input"
-                placeholder="Buscar disciplina"
-                autocomplete="off"
-              />
-              <button type="button" class="searchable-toggle" aria-label="Exibir disciplinas">
-                <span aria-hidden="true">▾</span>
-              </button>
+        <div id="assignment-course-fields">
+          <div class="form-field">
+            <label for="assignment-discipline-search">Disciplina</label>
+            <div class="searchable-select" data-select="assignment-discipline">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="assignment-discipline-search"
+                  class="searchable-input"
+                  placeholder="Buscar disciplina"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir disciplinas">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
             </div>
-            <ul class="searchable-options" role="listbox"></ul>
+            <select id="assignment-discipline" required class="searchable-native"></select>
           </div>
-          <select id="assignment-discipline" required class="searchable-native"></select>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="assignment-period-search">Período</label>
+              <div class="searchable-select" data-select="assignment-period">
+                <div class="searchable-input-wrapper">
+                  <input
+                    type="search"
+                    id="assignment-period-search"
+                    class="searchable-input"
+                    placeholder="Buscar período"
+                    autocomplete="off"
+                  />
+                  <button type="button" class="searchable-toggle" aria-label="Exibir períodos">
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                </div>
+                <ul class="searchable-options" role="listbox"></ul>
+              </div>
+              <select id="assignment-period" required class="searchable-native"></select>
+            </div>
+            <div class="form-field">
+              <label for="assignment-professor-search">Docente</label>
+              <div class="searchable-select" data-select="assignment-professor">
+                <div class="searchable-input-wrapper">
+                  <input
+                    type="search"
+                    id="assignment-professor-search"
+                    class="searchable-input"
+                    placeholder="Buscar docente"
+                    autocomplete="off"
+                  />
+                  <button type="button" class="searchable-toggle" aria-label="Exibir docentes">
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                </div>
+                <ul class="searchable-options" role="listbox"></ul>
+              </div>
+              <select id="assignment-professor" required class="searchable-native"></select>
+            </div>
+          </div>
         </div>
 
-        <div class="form-row">
+        <div id="assignment-meeting-fields" class="hidden">
           <div class="form-field">
-            <label for="assignment-period-search">Período</label>
-            <div class="searchable-select" data-select="assignment-period">
-              <div class="searchable-input-wrapper">
-                <input
-                  type="search"
-                  id="assignment-period-search"
-                  class="searchable-input"
-                  placeholder="Buscar período"
-                  autocomplete="off"
-                />
-                <button type="button" class="searchable-toggle" aria-label="Exibir períodos">
-                  <span aria-hidden="true">▾</span>
-                </button>
-              </div>
-              <ul class="searchable-options" role="listbox"></ul>
-            </div>
-            <select id="assignment-period" required class="searchable-native"></select>
+            <label for="assignment-meeting-type">Tipo de reunião</label>
+            <input type="text" id="assignment-meeting-type" readonly />
           </div>
           <div class="form-field">
-            <label for="assignment-professor-search">Docente</label>
-            <div class="searchable-select" data-select="assignment-professor">
-              <div class="searchable-input-wrapper">
-                <input
-                  type="search"
-                  id="assignment-professor-search"
-                  class="searchable-input"
-                  placeholder="Buscar docente"
-                  autocomplete="off"
-                />
-                <button type="button" class="searchable-toggle" aria-label="Exibir docentes">
-                  <span aria-hidden="true">▾</span>
-                </button>
-              </div>
-              <ul class="searchable-options" role="listbox"></ul>
-            </div>
-            <select id="assignment-professor" required class="searchable-native"></select>
+            <label for="assignment-meeting-professors">Docentes participantes</label>
+            <select id="assignment-meeting-professors" multiple size="6"></select>
           </div>
         </div>
 
