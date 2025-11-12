@@ -65,6 +65,42 @@ const disciplineColorPalette = [
 const DEFAULT_DISCIPLINE_COLOR = disciplineColorPalette[0] || '#2962ff';
 
 const DARK_MODE_STORAGE_KEY = 'planner.darkMode';
+const ICON_SPRITE_PATH = 'assets/icons/ui-icons.svg';
+
+function createIcon(symbolId, additionalClass = '') {
+  if (!symbolId) return null;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const classNames = ['icon'];
+  if (additionalClass) {
+    classNames.push(additionalClass);
+  }
+  svg.setAttribute('class', classNames.join(' '));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
+  use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
+  use.setAttribute('href', reference);
+  svg.appendChild(use);
+  return svg;
+}
+
+function updateIconReference(svgElement, symbolId) {
+  if (!svgElement || !symbolId) return;
+  const use = svgElement.querySelector('use');
+  if (!use) return;
+  const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
+  use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
+  use.setAttribute('href', reference);
+}
+
+function createVisuallyHiddenText(label) {
+  const span = document.createElement('span');
+  span.className = 'visually-hidden';
+  span.textContent = label;
+  return span;
+}
 
 function normalizeColorValue(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -194,7 +230,7 @@ function applyDarkMode(enabled) {
     isEnabled ? 'Desativar modo noturno' : 'Ativar modo noturno'
   );
   if (icon) {
-    icon.textContent = isEnabled ? '☀️' : '🌙';
+    updateIconReference(icon, isEnabled ? 'icon-sun' : 'icon-moon');
   }
 }
 
@@ -1426,8 +1462,11 @@ function renderEntityList(list, container, type) {
       const editButton = document.createElement('button');
       editButton.type = 'button';
       editButton.className = 'icon-button';
-      editButton.innerHTML =
-        '<span aria-hidden="true">✏️</span><span class="visually-hidden">Editar</span>';
+      const editIcon = createIcon('icon-edit', 'icon--toolbar');
+      if (editIcon) {
+        editButton.appendChild(editIcon);
+      }
+      editButton.appendChild(createVisuallyHiddenText('Editar'));
       editButton.title = 'Editar';
       editButton.addEventListener('click', () => startEntityEditing(type, item.id));
       actions.appendChild(editButton);
@@ -1435,8 +1474,11 @@ function renderEntityList(list, container, type) {
       const removeButton = document.createElement('button');
       removeButton.type = 'button';
       removeButton.className = 'icon-button danger';
-      removeButton.innerHTML =
-        '<span aria-hidden="true">🗑️</span><span class="visually-hidden">Remover</span>';
+      const removeIcon = createIcon('icon-delete', 'icon--toolbar');
+      if (removeIcon) {
+        removeButton.appendChild(removeIcon);
+      }
+      removeButton.appendChild(createVisuallyHiddenText('Remover'));
       removeButton.title = 'Remover';
       removeButton.addEventListener('click', () => confirmRemoval(type, item));
       actions.appendChild(removeButton);
@@ -1463,7 +1505,11 @@ function createProfessorDisciplineEditor(initialIds = []) {
   addButton.className = 'icon-button small';
   addButton.title = 'Adicionar disciplina';
   addButton.setAttribute('aria-label', 'Adicionar disciplina');
-  addButton.innerHTML = '<span aria-hidden="true">➕</span><span class="visually-hidden">Adicionar</span>';
+  const addIcon = createIcon('icon-add', 'icon--small');
+  if (addIcon) {
+    addButton.appendChild(addIcon);
+  }
+  addButton.appendChild(createVisuallyHiddenText('Adicionar disciplina'));
 
   control.appendChild(select);
   control.appendChild(addButton);
@@ -1532,8 +1578,11 @@ function createProfessorDisciplineEditor(initialIds = []) {
         removeButton.dataset.id = id;
         removeButton.title = 'Remover disciplina';
         removeButton.setAttribute('aria-label', 'Remover disciplina');
-        removeButton.innerHTML =
-          '<span aria-hidden="true">➖</span><span class="visually-hidden">Remover</span>';
+        const removeIcon = createIcon('icon-remove', 'icon--small');
+        if (removeIcon) {
+          removeButton.appendChild(removeIcon);
+        }
+        removeButton.appendChild(createVisuallyHiddenText('Remover disciplina'));
         li.appendChild(removeButton);
         list.appendChild(li);
       });
@@ -1590,8 +1639,11 @@ function renderProfessorFormDisciplineChips() {
       removeButton.dataset.id = id;
       removeButton.title = 'Remover disciplina';
       removeButton.setAttribute('aria-label', 'Remover disciplina');
-      removeButton.innerHTML =
-        '<span aria-hidden="true">➖</span><span class="visually-hidden">Remover</span>';
+      const removeIcon = createIcon('icon-remove', 'icon--small');
+      if (removeIcon) {
+        removeButton.appendChild(removeIcon);
+      }
+      removeButton.appendChild(createVisuallyHiddenText('Remover disciplina'));
       li.appendChild(removeButton);
       professorDisciplineList.appendChild(li);
     });
