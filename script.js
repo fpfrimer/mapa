@@ -28,6 +28,18 @@ const searchQueries = {
   discipline: ''
 };
 
+const searchFilters = {
+  professor: {
+    onlyCourseArea: false
+  },
+  discipline: {
+    periodId: ''
+  },
+  room: {
+    periodId: ''
+  }
+};
+
 let activePanelKey = null;
 
 const SLOT_DRAG_THRESHOLD = 6;
@@ -478,6 +490,7 @@ const elements = {
   professorDisciplineAdd: document.getElementById('professor-discipline-add'),
   professorDisciplineList: document.getElementById('professor-discipline-list'),
   professorAreaCheckbox: document.getElementById('professor-area'),
+  professorAreaFilter: document.getElementById('professor-filter-area'),
   entityMenu: document.querySelector('.entity-menu'),
   menuButtons: document.querySelectorAll('.menu-button[data-panel]'),
   managementPanel: document.getElementById('management-panel'),
@@ -489,6 +502,8 @@ const elements = {
   roomSearch: document.getElementById('room-search'),
   disciplineSearch: document.getElementById('discipline-search'),
   disciplinePeriodSelect: document.getElementById('discipline-period'),
+  disciplinePeriodFilter: document.getElementById('discipline-filter-period'),
+  roomPeriodFilter: document.getElementById('room-filter-period'),
   viewTypeSelect: document.getElementById('view-type'),
   entitySelector: document.getElementById('entity-selector'),
   scheduleContainer: document.getElementById('schedule-container'),
@@ -569,27 +584,61 @@ function normalizeText(value) {
     .trim();
 }
 
-function matchesSearchQuery(item, type, query) {
-  if (!query) return true;
-  const name = normalizeText(item?.name || '');
-  if (name.includes(query)) return true;
-  if (type === 'professor') {
-    const labels = getProfessorDisciplineLabels(item || {});
-    if (labels.some((label) => normalizeText(label).includes(query))) {
-      return true;
+function roomHasAssignmentsInPeriod(roomId, periodId) {
+  if (!roomId || !periodId) return false;
+  const schedule = state.schedule?.[periodId];
+  if (!schedule || typeof schedule !== 'object') return false;
+  return Object.values(schedule).some((entry) => entry && entry.roomId === roomId);
+}
+
+function matchesSearchQuery(item, type, query, filters = {}) {
+  const normalizedQuery = typeof query === 'string' ? query : '';
+  let matchesText = true;
+
+  if (normalizedQuery) {
+    matchesText = false;
+    const name = normalizeText(item?.name || '');
+    if (name.includes(normalizedQuery)) {
+      matchesText = true;
+    }
+
+    if (!matchesText && type === 'professor') {
+      const labels = getProfessorDisciplineLabels(item || {});
+      matchesText = labels.some((label) => normalizeText(label).includes(normalizedQuery));
+    }
+
+    if (!matchesText && type === 'discipline') {
+      const code = normalizeText(item?.code || '');
+      if (code && code.includes(normalizedQuery)) {
+        matchesText = true;
+      }
+    }
+
+    if (!matchesText && type === 'discipline') {
+      const period = getPeriodById(item?.periodId);
+      if (period && normalizeText(period.name).includes(normalizedQuery)) {
+        matchesText = true;
+      }
     }
   }
-  if (type === 'discipline') {
-    const code = normalizeText(item?.code || '');
-    if (code && code.includes(query)) return true;
+
+  if (!matchesText) {
+    return false;
   }
-  if (type === 'discipline') {
-    const period = getPeriodById(item?.periodId);
-    if (period && normalizeText(period.name).includes(query)) {
-      return true;
-    }
+
+  if (type === 'professor' && filters.onlyCourseArea) {
+    return Boolean(item?.isCourseArea);
   }
-  return false;
+
+  if (type === 'discipline' && filters.periodId) {
+    return (item?.periodId || '') === filters.periodId;
+  }
+
+  if (type === 'room' && filters.periodId) {
+    return roomHasAssignmentsInPeriod(item?.id, filters.periodId);
+  }
+
+  return true;
 }
 
 const searchableDropdowns = new Map();
@@ -1098,6 +1147,7 @@ function generateId(type) {
 function renderEntityList(list, container, type) {
   container.innerHTML = '';
   const query = normalizeText(searchQueries[type] || '');
+  const filters = searchFilters[type] || {};
   const disciplineUsage = type === 'discipline' ? computeDisciplineUsage() : null;
   const filtered = list
     .map((item) => {
@@ -1106,9 +1156,8 @@ function renderEntityList(list, container, type) {
       return { item, isEditing };
     })
     .filter(({ item, isEditing }) => {
-      if (!query) return true;
       if (isEditing) return true;
-      return matchesSearchQuery(item, type, query);
+      return matchesSearchQuery(item, type, query, filters);
     });
 
   if (!filtered.length) {
@@ -1639,7 +1688,26 @@ function toggleManagementPanel(panelKey) {
   }
 }
 
+function ensureFilterConsistency() {
+  const validPeriodIds = new Set(state.periods.map((period) => period.id));
+
+  if (searchFilters.discipline.periodId && !validPeriodIds.has(searchFilters.discipline.periodId)) {
+    searchFilters.discipline.periodId = '';
+    if (elements.disciplinePeriodFilter) {
+      elements.disciplinePeriodFilter.value = '';
+    }
+  }
+
+  if (searchFilters.room.periodId && !validPeriodIds.has(searchFilters.room.periodId)) {
+    searchFilters.room.periodId = '';
+    if (elements.roomPeriodFilter) {
+      elements.roomPeriodFilter.value = '';
+    }
+  }
+}
+
 function refreshLists() {
+  ensureFilterConsistency();
   ensureDisciplineColors();
   sortAllCollections();
   renderEntityList(state.periods, elements.periodList, 'period');
@@ -1865,14 +1933,51 @@ function deleteEntity(type, id) {
 }
 
 function updateDisciplinePeriodOptions() {
-  const { disciplinePeriodSelect } = elements;
-  disciplinePeriodSelect.innerHTML = '<option value="">Período</option>';
-  state.periods.forEach((period) => {
-    const option = document.createElement('option');
-    option.value = period.id;
-    option.textContent = period.name;
-    disciplinePeriodSelect.appendChild(option);
-  });
+  const { disciplinePeriodSelect, disciplinePeriodFilter, roomPeriodFilter } = elements;
+  const periods = state.periods.map((period) => ({ id: period.id, name: period.name }));
+  const periodIds = new Set(periods.map((period) => period.id));
+
+  if (disciplinePeriodSelect) {
+    const currentValue = disciplinePeriodSelect.value;
+    disciplinePeriodSelect.innerHTML = '<option value="">Período</option>';
+    periods.forEach((period) => {
+      const option = document.createElement('option');
+      option.value = period.id;
+      option.textContent = period.name;
+      disciplinePeriodSelect.appendChild(option);
+    });
+    disciplinePeriodSelect.value = periodIds.has(currentValue) ? currentValue : '';
+  }
+
+  if (disciplinePeriodFilter) {
+    const currentFilterValue = periodIds.has(searchFilters.discipline.periodId)
+      ? searchFilters.discipline.periodId
+      : '';
+    searchFilters.discipline.periodId = currentFilterValue;
+    disciplinePeriodFilter.innerHTML = '<option value="">Todos os períodos</option>';
+    periods.forEach((period) => {
+      const option = document.createElement('option');
+      option.value = period.id;
+      option.textContent = period.name;
+      disciplinePeriodFilter.appendChild(option);
+    });
+    disciplinePeriodFilter.value = currentFilterValue;
+  }
+
+  if (roomPeriodFilter) {
+    const currentRoomFilterValue = periodIds.has(searchFilters.room.periodId)
+      ? searchFilters.room.periodId
+      : '';
+    searchFilters.room.periodId = currentRoomFilterValue;
+    roomPeriodFilter.innerHTML = '<option value="">Todos os períodos</option>';
+    periods.forEach((period) => {
+      const option = document.createElement('option');
+      option.value = period.id;
+      option.textContent = period.name;
+      roomPeriodFilter.appendChild(option);
+    });
+    roomPeriodFilter.value = currentRoomFilterValue;
+  }
 }
 
 function updateProfessorDisciplineOptions() {
@@ -4500,6 +4605,30 @@ function bindSearchFilters() {
       refreshLists();
     });
   });
+
+  if (elements.professorAreaFilter) {
+    elements.professorAreaFilter.checked = Boolean(searchFilters.professor.onlyCourseArea);
+    elements.professorAreaFilter.addEventListener('change', (event) => {
+      searchFilters.professor.onlyCourseArea = event.target.checked;
+      refreshLists();
+    });
+  }
+
+  if (elements.disciplinePeriodFilter) {
+    elements.disciplinePeriodFilter.value = searchFilters.discipline.periodId || '';
+    elements.disciplinePeriodFilter.addEventListener('change', (event) => {
+      searchFilters.discipline.periodId = event.target.value;
+      refreshLists();
+    });
+  }
+
+  if (elements.roomPeriodFilter) {
+    elements.roomPeriodFilter.value = searchFilters.room.periodId || '';
+    elements.roomPeriodFilter.addEventListener('change', (event) => {
+      searchFilters.room.periodId = event.target.value;
+      refreshLists();
+    });
+  }
 }
 
 function resetSearchFilters() {
@@ -4508,10 +4637,17 @@ function resetSearchFilters() {
   searchQueries.room = '';
   searchQueries.discipline = '';
 
+  searchFilters.professor.onlyCourseArea = false;
+  searchFilters.discipline.periodId = '';
+  searchFilters.room.periodId = '';
+
   if (elements.periodSearch) elements.periodSearch.value = '';
   if (elements.professorSearch) elements.professorSearch.value = '';
   if (elements.roomSearch) elements.roomSearch.value = '';
   if (elements.disciplineSearch) elements.disciplineSearch.value = '';
+  if (elements.professorAreaFilter) elements.professorAreaFilter.checked = false;
+  if (elements.disciplinePeriodFilter) elements.disciplinePeriodFilter.value = '';
+  if (elements.roomPeriodFilter) elements.roomPeriodFilter.value = '';
 }
 
 function setupSearchableDropdowns() {
