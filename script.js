@@ -819,8 +819,12 @@ function highlightRelatedDisciplines(disciplineIds, originCell) {
   });
 }
 
-const menuButtons = Array.from(elements.menuButtons || []);
 const panelSections = Array.from(elements.panelSections || []);
+
+function getMenuButtons() {
+  const scope = elements.entityMenu || document;
+  return Array.from(scope.querySelectorAll('.menu-button[data-panel]'));
+}
 
 function normalizeActiveConfigurationStatus(value) {
   return ACTIVE_CONFIG_STATUS_VALUES.has(value) ? value : ACTIVE_CONFIG_STATUS.IDLE;
@@ -2216,7 +2220,7 @@ function setupProfessorFormControls() {
   renderProfessorFormMeetingTypes();
 }
 
-function openManagementPanel(panelKey) {
+function openManagementPanel(panelKey, menuButtons = getMenuButtons()) {
   const { managementPanel, panelTitle } = elements;
   if (!managementPanel) return;
   activePanelKey = panelKey;
@@ -2250,7 +2254,7 @@ function openManagementPanel(panelKey) {
   managementPanel.focus();
 }
 
-function closeManagementPanel() {
+function closeManagementPanel(menuButtons = getMenuButtons()) {
   const { managementPanel, panelTitle } = elements;
   if (!managementPanel) return;
   managementPanel.classList.add('hidden');
@@ -2268,14 +2272,14 @@ function closeManagementPanel() {
   }
 }
 
-function toggleManagementPanel(panelKey) {
+function toggleManagementPanel(panelKey, menuButtons = getMenuButtons()) {
   const { managementPanel } = elements;
   if (!managementPanel) return;
   const isOpen = !managementPanel.classList.contains('hidden');
   if (isOpen && activePanelKey === panelKey) {
-    closeManagementPanel();
+    closeManagementPanel(menuButtons);
   } else {
-    openManagementPanel(panelKey);
+    openManagementPanel(panelKey, menuButtons);
   }
 }
 
@@ -6383,18 +6387,23 @@ function bindStorageControls() {
 function bindManagementPanel() {
   if (!elements.managementPanel) return;
 
+  const menuButtons = getMenuButtons();
+
   menuButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const panelKey = button.dataset.panel;
       if (panelKey) {
-        toggleManagementPanel(panelKey);
+        toggleManagementPanel(panelKey, menuButtons);
       }
     });
+    const isActive = activePanelKey && button.dataset.panel === activePanelKey;
+    button.classList.toggle('active', Boolean(isActive));
+    button.setAttribute('aria-expanded', String(Boolean(isActive)));
   });
 
   if (elements.panelClose) {
     elements.panelClose.addEventListener('click', () => {
-      closeManagementPanel();
+      closeManagementPanel(menuButtons);
     });
   }
 
