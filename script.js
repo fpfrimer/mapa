@@ -3101,43 +3101,7 @@ function collectAssignmentErrors(periodId, data) {
   return [...new Set(errors)];
 }
 
-function collectMeetingAssignmentErrors(meetingId, data) {
-  const errors = [];
-  const meeting = getMeetingById(meetingId);
-  if (!meeting) {
-    errors.push('Reunião removida do cadastro.');
-    return errors;
-  }
-
-  const meetingType = getMeetingTypeById(meeting.meetingTypeId);
-  if (!meetingType) {
-    errors.push('Tipo de reunião removido do cadastro.');
-  }
-
-  const participants = getEffectiveMeetingParticipants(meeting, data);
-  if (!participants.length) {
-    errors.push('Nenhum docente associado a este horário.');
-  }
-
-  participants.forEach((id) => {
-    if (!getProfessorById(id)) {
-      errors.push('Docente removido do cadastro.');
-    }
-  });
-
-  const explicitRoom = typeof data?.roomId === 'string' ? data.roomId : '';
-  const resolvedRoom = getEffectiveMeetingRoom(meeting, data);
-  if (explicitRoom && !getRoomById(explicitRoom)) {
-    errors.push('Sala selecionada removida do cadastro.');
-  }
-  if (!explicitRoom && resolvedRoom && !getRoomById(resolvedRoom)) {
-    errors.push('Sala padrão da reunião foi removida do cadastro.');
-  }
-
-  return [...new Set(errors)];
-}
-
-function buildCellContent(assignments) {
+function buildCellContent(assignments, view) {
   if (!assignments.length) {
     return { html: '<span class="slot-empty">Disponível</span>', errors: [] };
   }
@@ -3151,62 +3115,17 @@ function buildCellContent(assignments) {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  const parts = assignments.map((entry) => {
-    if (entry.sourceType === 'meeting') {
-      const meeting = getMeetingById(entry.meetingId);
-      const meetingType = meeting ? getMeetingTypeById(meeting.meetingTypeId) : null;
-      const participants = getEffectiveMeetingParticipants(meeting, entry.data);
-      const participantNames = participants
-        .map((id) => getProfessorById(id)?.name || id)
-        .filter(Boolean);
-      const roomId = getEffectiveMeetingRoom(meeting, entry.data);
-      const room = roomId ? getRoomById(roomId) : null;
-      const classes = ['slot-content', 'meeting-content'];
-      const styleParts = [];
-      const baseColor = getMeetingTypeColor(meetingType);
-      if (baseColor) {
-        classes.push('with-discipline-color');
-        styleParts.push(`--discipline-color: ${baseColor}`);
-        const fill = colorWithAlpha(baseColor);
-        if (fill) {
-          styleParts.push(`--discipline-fill: ${fill}`);
-        }
-      }
+  const escapeHtml = (value) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
 
-      const lines = [];
-      const label = meeting ? meeting.name : `Reunião ${entry.meetingId}`;
-      lines.push(
-        `<span class="slot-line slot-line-meeting"><span class="badge meeting">${label}</span></span>`
-      );
-      if (meetingType) {
-        lines.push(
-          `<span class="slot-line slot-line-type"><span class="badge info">${meetingType.name}</span></span>`
-        );
-      }
-      if (participantNames.length) {
-        const badges = participantNames
-          .map((name) => `<span class="badge docente">${name}</span>`)
-          .join(' ');
-        lines.push(`<span class="slot-line slot-line-professor">${badges}</span>`);
-      }
-      if (room) {
-        lines.push(
-          `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
-        );
-      }
+  const hidePeriodLine = view === 'period';
+  const hideProfessorLine = view === 'professor';
+  const hideRoomLine = view === 'room';
 
-      collectMeetingAssignmentErrors(entry.meetingId, entry.data).forEach((error) =>
-        errorSet.add(error)
-      );
-
-      const accessibleLabel = `Reunião: ${label}`;
-      const attributes = [`title="${escapeAttribute(accessibleLabel)}"`, `aria-label="${escapeAttribute(accessibleLabel)}"`];
-      const styleAttr = styleParts.length ? ` style="${styleParts.join('; ')}"` : '';
-      return `<div class="${classes.join(' ')}"${styleAttr} ${attributes.join(' ')}>${lines.join('')}</div>`;
-    }
-
-    const periodId = entry.periodId;
-    const data = entry.data;
+  const parts = assignments.map(({ periodId, data }) => {
     const discipline = getDisciplineById(data.disciplineId);
     const professor = getProfessorById(data.professorId);
     const room = getRoomById(data.roomId);
@@ -3214,13 +3133,20 @@ function buildCellContent(assignments) {
     const disciplineLabel = discipline ? formatDisciplineLabel(discipline) : '';
     const lines = [];
 
-    if (period) {
+    if (discipline) {
+      const disciplineText = escapeHtml(disciplineLabel);
+      lines.push(
+        `<span class="slot-line slot-line-discipline"><span class="badge discipline">${disciplineText}</span></span>`
+      );
+    }
+
+    if (period && !hidePeriodLine) {
       lines.push(
         `<span class="slot-line slot-line-period"><span class="badge period">${period.name}</span></span>`
       );
     }
 
-    if (professor) {
+    if (professor && !hideProfessorLine) {
       let professorLine = `<span class="badge docente">${professor.name}`;
       if (professor.isCourseArea) {
         professorLine +=
@@ -3230,7 +3156,7 @@ function buildCellContent(assignments) {
       lines.push(`<span class="slot-line slot-line-professor">${professorLine}</span>`);
     }
 
-    if (room) {
+    if (room && !hideRoomLine) {
       lines.push(
         `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
       );
@@ -3381,7 +3307,7 @@ function renderSchedule() {
         const key = slotKey(day.key, slot.code);
         const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
         const draggableInfo = getDraggableAssignmentInfo(assignments);
-        const cellContent = buildCellContent(assignments);
+        const cellContent = buildCellContent(assignments, state.view);
         const disciplineIds = assignments
           .filter((entry) => entry?.sourceType === 'class')
           .map((entry) => entry?.data?.disciplineId)
