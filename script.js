@@ -3,12 +3,18 @@ const state = {
   professors: [],
   rooms: [],
   disciplines: [],
+  meetingTypes: [],
+  meetings: [],
   schedule: {}, // periodId -> { slotKey: { disciplineId, professorId, roomId } }
+  meetingSchedule: {}, // meetingId -> { slotKey: { professorIds: [], roomId: '' } }
   view: 'period',
   selectedEntity: '',
   assignmentEditing: null,
   entityEditing: null,
   multiSelectMode: false,
+  activeConfigurationId: '',
+  activeConfigurationName: '',
+  activeConfigurationStatus: 'idle',
   selectedSlots: new Set()
 };
 
@@ -16,16 +22,33 @@ let counters = {
   period: 1,
   professor: 1,
   room: 1,
-  discipline: 1
+  discipline: 1,
+  meetingType: 1,
+  meeting: 1
 };
 
 let savedConfigurations = [];
+
+const ACTIVE_CONFIG_STATUS = {
+  IDLE: 'idle',
+  NEEDS_NAME: 'needs-name',
+  DIRTY: 'dirty',
+  SAVING: 'saving',
+  SYNCED: 'synced',
+  ERROR: 'error'
+};
+
+const ACTIVE_CONFIG_STATUS_VALUES = new Set(Object.values(ACTIVE_CONFIG_STATUS));
+const ACTIVE_CONFIG_AUTOSAVE_DELAY = 5000;
+let activeConfigAutosaveTimer = null;
 
 const searchQueries = {
   period: '',
   professor: '',
   room: '',
-  discipline: ''
+  discipline: '',
+  meetingType: '',
+  meeting: ''
 };
 
 const searchFilters = {
@@ -331,6 +354,73 @@ function sanitizeDisciplineIdList(list) {
   return result;
 }
 
+function sanitizeProfessorIdList(list) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(list) ? list : [])
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .forEach((value) => {
+      if (!value || seen.has(value)) return;
+      if (!state.professors.some((professor) => professor.id === value)) return;
+      seen.add(value);
+      result.push(value);
+    });
+  return result;
+}
+
+function normalizeMeetingTypeRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = typeof record.id === 'string' ? record.id.trim() : '';
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    color: normalizeHexColor(record.color)
+  };
+}
+
+function normalizeMeetingRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = typeof record.id === 'string' ? record.id.trim() : '';
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  if (!id || !name) return null;
+  const meetingTypeId = typeof record.meetingTypeId === 'string' ? record.meetingTypeId.trim() : '';
+  const professorIds = sanitizeProfessorIdList(record.professorIds || []);
+  const roomId = typeof record.roomId === 'string' ? record.roomId.trim() : '';
+  return {
+    id,
+    name,
+    meetingTypeId,
+    professorIds,
+    roomId
+  };
+}
+
+function sanitizeMeetingSchedulePayload(payload) {
+  const result = {};
+  if (!payload || typeof payload !== 'object') {
+    return result;
+  }
+  Object.entries(payload).forEach(([meetingId, slots]) => {
+    if (!state.meetings.some((meeting) => meeting.id === meetingId)) return;
+    if (!slots || typeof slots !== 'object') return;
+    const sanitizedSlots = {};
+    Object.entries(slots).forEach(([key, entry]) => {
+      if (!entry || typeof entry !== 'object') return;
+      const { dayKey, slotCode } = parseSlotKey(key);
+      if (!dayKey || !slotCode) return;
+      const professorIds = sanitizeProfessorIdList(entry.professorIds || []);
+      const roomId = typeof entry.roomId === 'string' ? entry.roomId.trim() : '';
+      sanitizedSlots[key] = { professorIds, roomId };
+    });
+    if (Object.keys(sanitizedSlots).length) {
+      result[meetingId] = sanitizedSlots;
+    }
+  });
+  return result;
+}
+
 function normalizeProfessorRecord(professor) {
   if (!professor || typeof professor !== 'object') return null;
   const legacyDiscipline =
@@ -506,7 +596,9 @@ const entityCollections = {
   period: 'periods',
   professor: 'professors',
   room: 'rooms',
-  discipline: 'disciplines'
+  discipline: 'disciplines',
+  meetingType: 'meetingTypes',
+  meeting: 'meetings'
 };
 
 const elements = {
@@ -514,6 +606,8 @@ const elements = {
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
   disciplineForm: document.getElementById('discipline-form'),
+  meetingTypeForm: document.getElementById('meeting-type-form'),
+  meetingForm: document.getElementById('meeting-form'),
   disciplineNameInput: document.getElementById('discipline-name'),
   disciplineCodeInput: document.getElementById('discipline-code'),
   disciplineHoursInput: document.getElementById('discipline-hours'),
@@ -522,6 +616,8 @@ const elements = {
   professorList: document.getElementById('professor-list'),
   roomList: document.getElementById('room-list'),
   disciplineList: document.getElementById('discipline-list'),
+  meetingTypeList: document.getElementById('meeting-type-list'),
+  meetingList: document.getElementById('meeting-list'),
   professorDisciplineSelect: document.getElementById('professor-discipline'),
   professorDisciplineAdd: document.getElementById('professor-discipline-add'),
   professorDisciplineList: document.getElementById('professor-discipline-list'),
@@ -540,6 +636,14 @@ const elements = {
   disciplinePeriodSelect: document.getElementById('discipline-period'),
   disciplinePeriodFilter: document.getElementById('discipline-filter-period'),
   roomPeriodFilter: document.getElementById('room-filter-period'),
+  meetingTypeSearch: document.getElementById('meeting-type-search'),
+  meetingSearch: document.getElementById('meeting-search'),
+  meetingTypeColorInput: document.getElementById('meeting-type-color'),
+  meetingTypeNameInput: document.getElementById('meeting-type-name'),
+  meetingNameInput: document.getElementById('meeting-name'),
+  meetingTypeSelect: document.getElementById('meeting-type-select'),
+  meetingProfessorSelect: document.getElementById('meeting-professors'),
+  meetingRoomSelect: document.getElementById('meeting-room'),
   viewTypeSelect: document.getElementById('view-type'),
   entitySelector: document.getElementById('entity-selector'),
   scheduleContainer: document.getElementById('schedule-container'),
@@ -548,12 +652,19 @@ const elements = {
   selectionSummary: document.getElementById('selection-summary'),
   editSelection: document.getElementById('edit-selection'),
   clearSelection: document.getElementById('clear-selection'),
+  activeConfigName: document.getElementById('active-config-name'),
+  activeConfigStatus: document.getElementById('active-config-status'),
+  quickSaveButton: document.getElementById('quick-save-config'),
   viewSummary: document.getElementById('view-summary'),
   modal: document.getElementById('assignment-modal'),
   modalClose: document.querySelector('.modal-close'),
   assignmentForm: document.getElementById('assignment-form'),
   assignmentDay: document.getElementById('assignment-day'),
   assignmentSlot: document.getElementById('assignment-slot'),
+  assignmentCourseFields: document.getElementById('assignment-course-fields'),
+  assignmentMeetingFields: document.getElementById('assignment-meeting-fields'),
+  assignmentMeetingType: document.getElementById('assignment-meeting-type'),
+  assignmentMeetingProfessors: document.getElementById('assignment-meeting-professors'),
   assignmentDiscipline: document.getElementById('assignment-discipline'),
   assignmentPeriod: document.getElementById('assignment-period'),
   assignmentProfessor: document.getElementById('assignment-professor'),
@@ -611,6 +722,181 @@ function highlightRelatedDisciplines(disciplineIds, originCell) {
 const menuButtons = Array.from(elements.menuButtons || []);
 const panelSections = Array.from(elements.panelSections || []);
 
+function normalizeActiveConfigurationStatus(value) {
+  return ACTIVE_CONFIG_STATUS_VALUES.has(value) ? value : ACTIVE_CONFIG_STATUS.IDLE;
+}
+
+function getActiveConfigurationStatusText() {
+  const status = normalizeActiveConfigurationStatus(state.activeConfigurationStatus);
+  switch (status) {
+    case ACTIVE_CONFIG_STATUS.SAVING:
+      return 'Sincronizando…';
+    case ACTIVE_CONFIG_STATUS.SYNCED:
+      return 'Sincronizada.';
+    case ACTIVE_CONFIG_STATUS.DIRTY:
+      return 'Alterações pendentes de sincronização.';
+    case ACTIVE_CONFIG_STATUS.ERROR:
+      return 'Falha ao sincronizar.';
+    case ACTIVE_CONFIG_STATUS.NEEDS_NAME:
+      return state.activeConfigurationName
+        ? 'Salve manualmente para ativar a sincronização automática.'
+        : 'Defina um nome para habilitar a sincronização automática.';
+    case ACTIVE_CONFIG_STATUS.IDLE:
+    default:
+      return state.activeConfigurationName ? 'Configuração ativa pronta para edição.' : 'Nenhuma configuração ativa.';
+  }
+}
+
+function updateActiveConfigurationDisplay() {
+  const { activeConfigName, activeConfigStatus, quickSaveButton } = elements;
+  const status = normalizeActiveConfigurationStatus(state.activeConfigurationStatus);
+  const hasName = Boolean(state.activeConfigurationName);
+
+  if (activeConfigName) {
+    activeConfigName.textContent = hasName ? state.activeConfigurationName : 'Sem nome';
+    activeConfigName.classList.toggle('is-placeholder', !hasName);
+  }
+
+  if (activeConfigStatus) {
+    const baseClass = 'active-config-status';
+    activeConfigStatus.textContent = getActiveConfigurationStatusText();
+    activeConfigStatus.className = `${baseClass} ${baseClass}--${status}`;
+  }
+
+  if (quickSaveButton) {
+    const isSaving = status === ACTIVE_CONFIG_STATUS.SAVING;
+    quickSaveButton.disabled = isSaving;
+    quickSaveButton.textContent = isSaving ? 'Sincronizando…' : 'Sincronizar';
+    quickSaveButton.setAttribute('aria-busy', isSaving ? 'true' : 'false');
+    quickSaveButton.title = hasName
+      ? 'Sincronizar configuração ativa com o servidor'
+      : 'Defina um nome para salvar esta configuração';
+  }
+}
+
+function updateActiveConfigurationStatus(status, options = {}) {
+  const normalized = normalizeActiveConfigurationStatus(status);
+  const { force = false } = options;
+  if (!force && state.activeConfigurationStatus === normalized) {
+    return;
+  }
+  state.activeConfigurationStatus = normalized;
+  if (
+    normalized === ACTIVE_CONFIG_STATUS.SYNCED ||
+    normalized === ACTIVE_CONFIG_STATUS.IDLE ||
+    normalized === ACTIVE_CONFIG_STATUS.ERROR ||
+    normalized === ACTIVE_CONFIG_STATUS.NEEDS_NAME
+  ) {
+    clearActiveConfigurationAutosave();
+  }
+  updateActiveConfigurationDisplay();
+}
+
+function activateConfigurationEntry(entry, options = {}) {
+  if (!entry) return;
+  const id = typeof entry.id === 'string' ? entry.id : '';
+  const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+  state.activeConfigurationId = id;
+  state.activeConfigurationName = name;
+  const targetStatus =
+    typeof options.status === 'string'
+      ? options.status
+      : id && name
+      ? ACTIVE_CONFIG_STATUS.SYNCED
+      : ACTIVE_CONFIG_STATUS.IDLE;
+  updateActiveConfigurationStatus(targetStatus, { force: true });
+  updateActiveConfigurationDisplay();
+}
+
+function resetActiveConfiguration(options = {}) {
+  state.activeConfigurationId = '';
+  state.activeConfigurationName = '';
+  const targetStatus =
+    typeof options.status === 'string' ? options.status : ACTIVE_CONFIG_STATUS.IDLE;
+  updateActiveConfigurationStatus(targetStatus, { force: true });
+  updateActiveConfigurationDisplay();
+}
+
+function clearActiveConfigurationAutosave() {
+  if (activeConfigAutosaveTimer) {
+    clearTimeout(activeConfigAutosaveTimer);
+    activeConfigAutosaveTimer = null;
+  }
+}
+
+function scheduleActiveConfigurationAutosave() {
+  if (!state.activeConfigurationName || !state.activeConfigurationId) {
+    return;
+  }
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+  clearActiveConfigurationAutosave();
+  activeConfigAutosaveTimer = setTimeout(() => {
+    autoSaveActiveConfiguration();
+  }, ACTIVE_CONFIG_AUTOSAVE_DELAY);
+}
+
+async function autoSaveActiveConfiguration() {
+  clearActiveConfigurationAutosave();
+  if (!state.activeConfigurationName || !state.activeConfigurationId) {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+    return;
+  }
+
+  const previousStatus = state.activeConfigurationStatus;
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SAVING, { force: true });
+
+  try {
+    const result = await upsertSavedConfiguration(state.activeConfigurationName, null, {
+      skipConfirmation: true,
+      notify: false
+    });
+    if (result === 'success') {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SYNCED, { force: true });
+      if (previousStatus !== ACTIVE_CONFIG_STATUS.SYNCED) {
+        setStorageFeedback(`Configuração "${state.activeConfigurationName}" sincronizada automaticamente.`, 'success');
+      }
+    } else if (result === 'error') {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+      setStorageFeedback('Não foi possível sincronizar a configuração ativa automaticamente.', 'error');
+    } else {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+    }
+  } catch (error) {
+    console.error('Erro durante a sincronização automática.', error);
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+    setStorageFeedback('Não foi possível sincronizar a configuração ativa automaticamente.', 'error');
+  }
+}
+
+function markActiveConfigurationDirty() {
+  if (!state.activeConfigurationName) {
+    if (state.activeConfigurationStatus !== ACTIVE_CONFIG_STATUS.NEEDS_NAME) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Nomeie a configuração atual para habilitar a sincronização automática.', 'warning');
+    }
+    return;
+  }
+
+  if (!state.activeConfigurationId) {
+    if (state.activeConfigurationStatus !== ACTIVE_CONFIG_STATUS.NEEDS_NAME) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Salve a configuração nomeada manualmente para ativar a sincronização automática.', 'warning');
+    }
+    return;
+  }
+
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+  scheduleActiveConfigurationAutosave();
+}
+
+updateActiveConfigurationDisplay();
+
 function normalizeText(value) {
   return (value || '')
     .toString()
@@ -655,6 +941,21 @@ function matchesSearchQuery(item, type, query, filters = {}) {
       if (period && normalizeText(period.name).includes(normalizedQuery)) {
         matchesText = true;
       }
+    }
+
+    if (!matchesText && type === 'meeting') {
+      const meetingType = getMeetingTypeById(item?.meetingTypeId);
+      if (meetingType && normalizeText(meetingType.name).includes(normalizedQuery)) {
+        matchesText = true;
+      }
+    }
+
+    if (!matchesText && type === 'meeting') {
+      const names = sanitizeProfessorIdList(item?.professorIds || [])
+        .map((id) => getProfessorById(id)?.name || '')
+        .map((name) => normalizeText(name))
+        .filter(Boolean);
+      matchesText = names.some((name) => name.includes(normalizedQuery));
     }
   }
 
@@ -1111,6 +1412,8 @@ function sortAllCollections() {
   sortStateCollection('professor');
   sortStateCollection('room');
   sortStateCollection('discipline');
+  sortStateCollection('meetingType');
+  sortStateCollection('meeting');
 }
 
 function buildScheduleHeading() {
@@ -1132,6 +1435,11 @@ function buildScheduleHeading() {
     const room = getRoomById(state.selectedEntity);
     if (room) {
       return `Cronograma da sala ${room.name}`;
+    }
+  } else if (state.view === 'meeting') {
+    const meeting = getMeetingById(state.selectedEntity);
+    if (meeting) {
+      return `Cronograma da reunião ${meeting.name}`;
     }
   }
 
@@ -1208,6 +1516,12 @@ function renderEntityList(list, container, type) {
     const li = document.createElement('li');
     li.className = 'entity-item';
     let usage = null;
+    const editable = !['meetingType', 'meeting'].includes(type);
+    if (!editable && isEditing) {
+      state.entityEditing = null;
+      // eslint-disable-next-line no-param-reassign
+      isEditing = false;
+    }
     if (type === 'discipline' && disciplineUsage) {
       usage = disciplineUsage[item.id] || null;
       if (usage && usage.required > 0) {
@@ -1384,6 +1698,14 @@ function renderEntityList(list, container, type) {
           swatch.style.setProperty('--discipline-color', color);
           heading.appendChild(swatch);
         }
+      } else if (type === 'meetingType') {
+        const color = getMeetingTypeColor(item);
+        if (color) {
+          const swatch = document.createElement('span');
+          swatch.className = 'entity-color-swatch';
+          swatch.style.setProperty('--discipline-color', color);
+          heading.appendChild(swatch);
+        }
       }
 
       if (type === 'discipline' && item.code) {
@@ -1436,6 +1758,12 @@ function renderEntityList(list, container, type) {
             }
           }
         }
+      } else if (type === 'meetingType') {
+        const relatedMeetings = state.meetings.filter((meeting) => meeting.meetingTypeId === item.id);
+        const meta = document.createElement('span');
+        meta.className = 'entity-meta';
+        meta.textContent = `${relatedMeetings.length} reunião${relatedMeetings.length === 1 ? '' : 's'}`;
+        info.appendChild(meta);
       }
 
       if (type === 'professor') {
@@ -1452,6 +1780,31 @@ function renderEntityList(list, container, type) {
           ? `Disciplinas vinculadas: ${labels.join(', ')}`
           : 'Sem disciplinas vinculadas';
         info.appendChild(meta);
+      } else if (type === 'meeting') {
+        const meetingType = getMeetingTypeById(item.meetingTypeId);
+        if (meetingType) {
+          const badge = document.createElement('span');
+          badge.className = 'entity-badge info';
+          badge.textContent = meetingType.name;
+          info.appendChild(badge);
+        }
+        const participantIds = sanitizeProfessorIdList(item.professorIds || []);
+        const participants = participantIds
+          .map((id) => getProfessorById(id)?.name)
+          .filter(Boolean);
+        const participantsMeta = document.createElement('span');
+        participantsMeta.className = 'entity-meta';
+        participantsMeta.textContent = participants.length
+          ? `Docentes: ${participants.join(', ')}`
+          : 'Sem docentes vinculados';
+        info.appendChild(participantsMeta);
+        if (item.roomId) {
+          const room = getRoomById(item.roomId);
+          const roomMeta = document.createElement('span');
+          roomMeta.className = 'entity-meta';
+          roomMeta.textContent = room ? `Sala padrão: ${room.name}` : 'Sala removida';
+          info.appendChild(roomMeta);
+        }
       }
 
       li.appendChild(info);
@@ -1459,17 +1812,16 @@ function renderEntityList(list, container, type) {
       const actions = document.createElement('div');
       actions.className = 'entity-actions';
 
-      const editButton = document.createElement('button');
-      editButton.type = 'button';
-      editButton.className = 'icon-button';
-      const editIcon = createIcon('icon-edit', 'icon--toolbar');
-      if (editIcon) {
-        editButton.appendChild(editIcon);
+      if (editable) {
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'icon-button';
+        editButton.innerHTML =
+          '<span aria-hidden="true">✏️</span><span class="visually-hidden">Editar</span>';
+        editButton.title = 'Editar';
+        editButton.addEventListener('click', () => startEntityEditing(type, item.id));
+        actions.appendChild(editButton);
       }
-      editButton.appendChild(createVisuallyHiddenText('Editar'));
-      editButton.title = 'Editar';
-      editButton.addEventListener('click', () => startEntityEditing(type, item.id));
-      actions.appendChild(editButton);
 
       const removeButton = document.createElement('button');
       removeButton.type = 'button';
@@ -1766,8 +2118,11 @@ function refreshLists() {
   renderEntityList(state.professors, elements.professorList, 'professor');
   renderEntityList(state.rooms, elements.roomList, 'room');
   renderEntityList(state.disciplines, elements.disciplineList, 'discipline');
+  renderEntityList(state.meetingTypes, elements.meetingTypeList, 'meetingType');
+  renderEntityList(state.meetings, elements.meetingList, 'meeting');
   updateDisciplinePeriodOptions();
   updateProfessorDisciplineOptions();
+  updateMeetingFormOptions();
   updateDisciplineColorSuggestion();
 }
 
@@ -1860,6 +2215,14 @@ function confirmRemoval(type, item) {
       message =
         `Remover o período "${item.name}" também apagará ${relatedDisciplines.length} disciplina(s) vinculada(s). Continuar?`;
     }
+  } else if (type === 'meetingType') {
+    const relatedMeetings = state.meetings.filter((meeting) => meeting.meetingTypeId === item.id);
+    if (relatedMeetings.length) {
+      message =
+        `Remover o tipo de reunião "${item.name}" também apagará ${relatedMeetings.length} reunião(ões) vinculada(s). Continuar?`;
+    }
+  } else if (type === 'meeting') {
+    message = `Remover a reunião "${item.name}" excluirá todos os horários associados. Continuar?`;
   }
   const proceed = confirm(message);
   if (!proceed) return;
@@ -1962,6 +2325,18 @@ function deleteEntity(type, id) {
     purgeSchedule((periodId, entry) => entry.professorId === id);
   } else if (type === 'room') {
     purgeSchedule((periodId, entry) => entry.roomId === id);
+  } else if (type === 'meetingType') {
+    const removedMeetingIds = state.meetings
+      .filter((meeting) => meeting.meetingTypeId === id)
+      .map((meeting) => meeting.id);
+    if (removedMeetingIds.length) {
+      state.meetings = state.meetings.filter((meeting) => meeting.meetingTypeId !== id);
+      removedMeetingIds.forEach((meetingId) => {
+        delete state.meetingSchedule[meetingId];
+      });
+    }
+  } else if (type === 'meeting') {
+    delete state.meetingSchedule[id];
   }
 
   if (state.entityEditing && state.entityEditing.type === type && state.entityEditing.id === id) {
@@ -2050,6 +2425,63 @@ function updateProfessorDisciplineOptions() {
   renderProfessorFormDisciplineChips();
 }
 
+function updateMeetingTypeOptions() {
+  const { meetingTypeSelect } = elements;
+  if (meetingTypeSelect) {
+    const currentValue = meetingTypeSelect.value;
+    meetingTypeSelect.innerHTML = '<option value="">Tipo de reunião</option>';
+    state.meetingTypes.forEach((type) => {
+      const option = document.createElement('option');
+      option.value = type.id;
+      option.textContent = type.name;
+      meetingTypeSelect.appendChild(option);
+    });
+    const exists = state.meetingTypes.some((type) => type.id === currentValue);
+    meetingTypeSelect.value = exists ? currentValue : '';
+  }
+}
+
+function updateMeetingProfessorOptions() {
+  const { meetingProfessorSelect } = elements;
+  if (!meetingProfessorSelect) return;
+  const selectedValues = new Set(
+    Array.from(meetingProfessorSelect.selectedOptions || []).map((option) => option.value)
+  );
+  meetingProfessorSelect.innerHTML = '';
+  const sorted = [...state.professors].sort((a, b) => compareEntities('professor', a, b));
+  sorted.forEach((professor) => {
+    if (!professor.id) return;
+    const option = document.createElement('option');
+    option.value = professor.id;
+    option.textContent = professor.name;
+    option.selected = selectedValues.has(professor.id);
+    meetingProfessorSelect.appendChild(option);
+  });
+}
+
+function updateMeetingRoomOptions() {
+  const { meetingRoomSelect } = elements;
+  if (!meetingRoomSelect) return;
+  const currentValue = meetingRoomSelect.value;
+  meetingRoomSelect.innerHTML = '<option value="">Sala (opcional)</option>';
+  const sorted = [...state.rooms].sort((a, b) => compareEntities('room', a, b));
+  sorted.forEach((room) => {
+    if (!room.id) return;
+    const option = document.createElement('option');
+    option.value = room.id;
+    option.textContent = room.name;
+    meetingRoomSelect.appendChild(option);
+  });
+  const exists = state.rooms.some((room) => room.id === currentValue);
+  meetingRoomSelect.value = exists ? currentValue : '';
+}
+
+function updateMeetingFormOptions() {
+  updateMeetingTypeOptions();
+  updateMeetingProfessorOptions();
+  updateMeetingRoomOptions();
+}
+
 function updateEntitySelector() {
   const { entitySelector } = elements;
   entitySelector.innerHTML = '<option value=""></option>';
@@ -2057,6 +2489,7 @@ function updateEntitySelector() {
   if (state.view === 'period') source = state.periods;
   if (state.view === 'professor') source = state.professors;
   if (state.view === 'room') source = state.rooms;
+  if (state.view === 'meeting') source = state.meetings;
   source.forEach((item) => {
     const option = document.createElement('option');
     option.value = item.id;
@@ -2069,6 +2502,22 @@ function updateEntitySelector() {
       if (item.isCourseArea) {
         label = `${label} • Área do curso`;
       }
+    } else if (state.view === 'meeting') {
+      const meetingType = getMeetingTypeById(item.meetingTypeId);
+      const professors = Array.isArray(item.professorIds)
+        ? item.professorIds
+            .map((id) => getProfessorById(id)?.name)
+            .filter(Boolean)
+            .join(', ')
+        : '';
+      const parts = [item.name];
+      if (meetingType) {
+        parts.push(`Tipo: ${meetingType.name}`);
+      }
+      if (professors) {
+        parts.push(`Docentes: ${professors}`);
+      }
+      label = parts.join(' • ');
     }
     option.textContent = label;
     entitySelector.appendChild(option);
@@ -2102,6 +2551,18 @@ function getProfessorById(id) {
 
 function getRoomById(id) {
   return state.rooms.find((r) => r.id === id) || null;
+}
+
+function getMeetingTypeById(id) {
+  return state.meetingTypes.find((type) => type.id === id) || null;
+}
+
+function getMeetingById(id) {
+  return state.meetings.find((meeting) => meeting.id === id) || null;
+}
+
+function getMeetingTypeColor(meetingType) {
+  return normalizeHexColor(meetingType?.color);
 }
 
 function slotKey(dayKey, slotCode) {
@@ -2520,10 +2981,59 @@ function getAssignmentsForSlot(key) {
   const results = [];
   Object.entries(state.schedule).forEach(([periodId, slots]) => {
     if (slots[key]) {
-      results.push({ periodId, data: slots[key] });
+      results.push({ sourceType: 'class', periodId, data: slots[key] });
+    }
+  });
+  Object.entries(state.meetingSchedule).forEach(([meetingId, slots]) => {
+    const entry = slots[key];
+    if (entry) {
+      results.push({ sourceType: 'meeting', meetingId, data: entry });
     }
   });
   return results;
+}
+
+function ensureMeetingSchedule(meetingId) {
+  if (!state.meetingSchedule[meetingId]) {
+    state.meetingSchedule[meetingId] = {};
+  }
+  return state.meetingSchedule[meetingId];
+}
+
+function getMeetingAssignment(meetingId, key) {
+  return state.meetingSchedule[meetingId]?.[key] || null;
+}
+
+function getMeetingAssignmentsForSlot(key) {
+  const results = [];
+  Object.entries(state.meetingSchedule).forEach(([meetingId, slots]) => {
+    const entry = slots[key];
+    if (entry) {
+      results.push({ meetingId, data: entry });
+    }
+  });
+  return results;
+}
+
+function getEffectiveMeetingParticipants(meeting, entry) {
+  const explicit = sanitizeProfessorIdList(entry?.professorIds || []);
+  if (explicit.length) {
+    return explicit;
+  }
+  const fallback = Array.isArray(meeting?.professorIds) ? meeting.professorIds : [];
+  return sanitizeProfessorIdList(fallback);
+}
+
+function getEffectiveMeetingRoom(meeting, entry) {
+  const explicit = typeof entry?.roomId === 'string' ? entry.roomId : '';
+  if (explicit) return explicit;
+  return typeof meeting?.roomId === 'string' ? meeting.roomId : '';
+}
+
+function getMeetingLabel(meeting) {
+  if (!meeting) return 'reunião';
+  const type = getMeetingTypeById(meeting.meetingTypeId);
+  return type ? `${meeting.name} (${type.name})` : meeting.name;
 }
 
 function findAssignmentByProfessor(professorId, key) {
@@ -2696,20 +3206,47 @@ function getCellAssignments(view, entityId, dayKey, slotCode) {
   if (!entityId) return [];
   if (view === 'period') {
     const assignment = getAssignmentForPeriod(entityId, key);
-    return assignment ? [{ periodId: entityId, data: assignment }] : [];
+    return assignment ? [{ sourceType: 'class', periodId: entityId, data: assignment }] : [];
   }
+  if (view === 'meeting') {
+    const entry = getMeetingAssignment(entityId, key);
+    return entry ? [{ sourceType: 'meeting', meetingId: entityId, data: entry }] : [];
+  }
+  const assignments = getAssignmentsForSlot(key);
   if (view === 'professor') {
-    return getAssignmentsForSlot(key).filter(({ data }) => data.professorId === entityId);
+    return assignments.filter((entry) => {
+      if (entry.sourceType === 'class') {
+        return entry.data.professorId === entityId;
+      }
+      if (entry.sourceType === 'meeting') {
+        const meeting = getMeetingById(entry.meetingId);
+        const participants = getEffectiveMeetingParticipants(meeting, entry.data);
+        return participants.includes(entityId);
+      }
+      return false;
+    });
   }
   if (view === 'room') {
-    return getAssignmentsForSlot(key).filter(({ data }) => data.roomId === entityId);
+    return assignments.filter((entry) => {
+      if (entry.sourceType === 'class') {
+        return entry.data.roomId === entityId;
+      }
+      if (entry.sourceType === 'meeting') {
+        const meeting = getMeetingById(entry.meetingId);
+        const roomId = getEffectiveMeetingRoom(meeting, entry.data);
+        return roomId === entityId;
+      }
+      return false;
+    });
   }
-  return [];
+  return assignments;
 }
 
 function getDraggableAssignmentInfo(assignments) {
   if (!Array.isArray(assignments)) return null;
-  const valid = assignments.filter((entry) => entry && entry.data && entry.periodId);
+  const valid = assignments.filter(
+    (entry) => entry && entry.data && entry.sourceType === 'class' && entry.periodId
+  );
   if (valid.length !== 1) {
     return null;
   }
@@ -2772,6 +3309,7 @@ function renderSchedule() {
         const draggableInfo = getDraggableAssignmentInfo(assignments);
         const cellContent = buildCellContent(assignments, state.view);
         const disciplineIds = assignments
+          .filter((entry) => entry?.sourceType === 'class')
           .map((entry) => entry?.data?.disciplineId)
           .filter(Boolean);
         const uniqueDisciplineIds = [...new Set(disciplineIds)];
@@ -2906,6 +3444,8 @@ function renderViewSummary() {
     fragment = buildProfessorSummary(state.selectedEntity);
   } else if (state.view === 'room') {
     fragment = buildRoomSummary(state.selectedEntity);
+  } else if (state.view === 'meeting') {
+    fragment = buildMeetingSummary(state.selectedEntity);
   }
 
   if (fragment) {
@@ -3060,17 +3600,35 @@ function buildProfessorSummary(professorId) {
     });
   });
 
+  const meetingAssignments = [];
+  Object.entries(state.meetingSchedule).forEach(([meetingId, slots]) => {
+    const meeting = getMeetingById(meetingId);
+    Object.entries(slots).forEach(([key, entry]) => {
+      const participants = getEffectiveMeetingParticipants(meeting, entry);
+      if (!participants.includes(professorId)) return;
+      const { dayKey, slotCode } = parseSlotKey(key);
+      meetingAssignments.push({ meetingId, entry, dayKey, slotCode });
+    });
+  });
+
+  meetingAssignments.sort(compareSlotPosition);
+
   const classCount = assignments.length;
   const totalMinutes = assignments.reduce(
     (sum, assignment) => sum + getSlotDurationMinutes(assignment.slotCode),
     0
   );
 
+  const meetingCount = meetingAssignments.length;
+
   const totals = document.createElement('p');
   totals.className = 'summary-highlight';
+  const meetingHighlight = meetingCount
+    ? ` • <strong>Reuniões:</strong> ${meetingCount}`
+    : '';
   totals.innerHTML = `<strong>Aulas:</strong> ${classCount} • <strong>Horas:</strong> ${formatDurationMinutes(
     totalMinutes
-  )}`;
+  )}${meetingHighlight}`;
   fragment.appendChild(totals);
 
   const linkedLabels = getProfessorDisciplineLabels(professor);
@@ -3083,91 +3641,153 @@ function buildProfessorSummary(professorId) {
 
   if (!assignments.length) {
     fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este docente.'));
-    return fragment;
+  } else {
+    const disciplineMap = new Map();
+    assignments.forEach((item) => {
+      const discipline = getDisciplineById(item.entry.disciplineId);
+      if (!discipline) return;
+      let summary = disciplineMap.get(discipline.id);
+      if (!summary) {
+        summary = {
+          discipline,
+          count: 0,
+          periods: new Set(),
+          slots: []
+        };
+        disciplineMap.set(discipline.id, summary);
+      }
+      summary.count += 1;
+      summary.periods.add(item.periodId);
+      summary.slots.push({ dayKey: item.dayKey, slotCode: item.slotCode });
+    });
+
+    if (!disciplineMap.size) {
+      fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este docente.'));
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'summary-list';
+
+      const sorted = Array.from(disciplineMap.values());
+      sorted.sort((a, b) => compareEntities('discipline', a.discipline, b.discipline));
+
+      sorted.forEach((record) => {
+        const item = document.createElement('li');
+        item.className = 'summary-item';
+
+        const header = document.createElement('div');
+        header.className = 'summary-item-header';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'summary-item-title';
+        titleSpan.textContent = formatDisciplineLabel(record.discipline);
+        header.appendChild(titleSpan);
+
+        const status = document.createElement('span');
+        status.className = 'summary-status';
+        status.dataset.status = 'info';
+        status.textContent = `${record.count} horário${record.count > 1 ? 's' : ''}`;
+        header.appendChild(status);
+
+        item.appendChild(header);
+
+        const details = document.createElement('div');
+        details.className = 'summary-item-details';
+
+        const periods = Array.from(record.periods)
+          .map((id) => getPeriodById(id)?.name || id)
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+        if (periods.length) {
+          const periodLine = document.createElement('p');
+          periodLine.className = 'summary-line';
+          periodLine.innerHTML = `<strong>Períodos:</strong> ${periods.join(', ')}`;
+          details.appendChild(periodLine);
+        }
+
+        const slotLabels = record.slots
+          .sort(compareSlotPosition)
+          .map((slot) => formatCompactSlotLabel(slot.dayKey, slot.slotCode));
+        const slotLine = document.createElement('p');
+        slotLine.className = 'summary-line';
+        slotLine.innerHTML = slotLabels.length
+          ? `<strong>Horários:</strong> ${slotLabels.join(', ')}`
+          : '<strong>Horários:</strong> Sem horários atribuídos.';
+        details.appendChild(slotLine);
+
+        item.appendChild(details);
+        list.appendChild(item);
+      });
+
+      const collapsible = createSummaryCollapsible(
+        `Disciplinas atribuídas (${sorted.length})`,
+        list
+      );
+      fragment.appendChild(collapsible);
+    }
   }
 
-  const disciplineMap = new Map();
-  assignments.forEach((item) => {
-    const discipline = getDisciplineById(item.entry.disciplineId);
-    if (!discipline) return;
-    let summary = disciplineMap.get(discipline.id);
-    if (!summary) {
-      summary = {
-        discipline,
-        count: 0,
-        periods: new Set(),
-        slots: []
-      };
-      disciplineMap.set(discipline.id, summary);
-    }
-    summary.count += 1;
-    summary.periods.add(item.periodId);
-    summary.slots.push({ dayKey: item.dayKey, slotCode: item.slotCode });
-  });
+  if (meetingAssignments.length) {
+    const meetingList = document.createElement('ul');
+    meetingList.className = 'summary-list';
 
-  if (!disciplineMap.size) {
-    fragment.appendChild(createSummaryPlaceholder('Nenhum horário atribuído para este docente.'));
-    return fragment;
+    meetingAssignments.forEach((record) => {
+      const meetingItem = document.createElement('li');
+      meetingItem.className = 'summary-item';
+
+      const header = document.createElement('div');
+      header.className = 'summary-item-header';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'summary-item-title';
+      titleSpan.textContent = formatSlotLabel(record.dayKey, record.slotCode);
+      header.appendChild(titleSpan);
+
+      const meeting = getMeetingById(record.meetingId);
+      const meetingType = meeting ? getMeetingTypeById(meeting.meetingTypeId) : null;
+      const status = document.createElement('span');
+      status.className = 'summary-status';
+      status.dataset.status = 'info';
+      status.textContent = meeting ? meeting.name : record.meetingId;
+      header.appendChild(status);
+
+      meetingItem.appendChild(header);
+
+      const details = document.createElement('div');
+      details.className = 'summary-item-details';
+
+      if (meetingType) {
+        const typeLine = document.createElement('p');
+        typeLine.className = 'summary-line';
+        typeLine.innerHTML = `<strong>Tipo:</strong> ${meetingType.name}`;
+        details.appendChild(typeLine);
+      }
+
+      const participants = getEffectiveMeetingParticipants(meeting, record.entry);
+      const participantNames = participants
+        .map((id) => getProfessorById(id)?.name || id)
+        .filter(Boolean);
+      const participantLine = document.createElement('p');
+      participantLine.className = 'summary-line';
+      participantLine.innerHTML = `<strong>Participantes:</strong> ${
+        participantNames.length ? participantNames.join(', ') : 'Nenhum definido'
+      }`;
+      details.appendChild(participantLine);
+
+      const roomId = getEffectiveMeetingRoom(meeting, record.entry);
+      const room = roomId ? getRoomById(roomId) : null;
+      const roomLine = document.createElement('p');
+      roomLine.className = 'summary-line';
+      roomLine.innerHTML = `<strong>Sala:</strong> ${
+        room ? room.name : roomId ? `Sala ${roomId}` : 'Não definida'
+      }`;
+      details.appendChild(roomLine);
+
+      meetingItem.appendChild(details);
+      meetingList.appendChild(meetingItem);
+    });
+
+    fragment.appendChild(createSummaryCollapsible(`Reuniões (${meetingAssignments.length})`, meetingList));
   }
 
-  const list = document.createElement('ul');
-  list.className = 'summary-list';
-
-  const sorted = Array.from(disciplineMap.values());
-  sorted.sort((a, b) => compareEntities('discipline', a.discipline, b.discipline));
-
-  sorted.forEach((record) => {
-    const item = document.createElement('li');
-    item.className = 'summary-item';
-
-    const header = document.createElement('div');
-    header.className = 'summary-item-header';
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'summary-item-title';
-    titleSpan.textContent = formatDisciplineLabel(record.discipline);
-    header.appendChild(titleSpan);
-
-    const status = document.createElement('span');
-    status.className = 'summary-status';
-    status.dataset.status = 'info';
-    status.textContent = `${record.count} horário${record.count > 1 ? 's' : ''}`;
-    header.appendChild(status);
-
-    item.appendChild(header);
-
-    const details = document.createElement('div');
-    details.className = 'summary-item-details';
-
-    const periods = Array.from(record.periods)
-      .map((id) => getPeriodById(id)?.name || id)
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
-    if (periods.length) {
-      const periodLine = document.createElement('p');
-      periodLine.className = 'summary-line';
-      periodLine.innerHTML = `<strong>Períodos:</strong> ${periods.join(', ')}`;
-      details.appendChild(periodLine);
-    }
-
-    const slotLabels = record.slots
-      .sort(compareSlotPosition)
-      .map((slot) => formatCompactSlotLabel(slot.dayKey, slot.slotCode));
-    const slotLine = document.createElement('p');
-    slotLine.className = 'summary-line';
-    slotLine.innerHTML = slotLabels.length
-      ? `<strong>Horários:</strong> ${slotLabels.join(', ')}`
-      : '<strong>Horários:</strong> Sem horários atribuídos.';
-    details.appendChild(slotLine);
-
-    item.appendChild(details);
-    list.appendChild(item);
-  });
-
-  const collapsible = createSummaryCollapsible(
-    `Disciplinas atribuídas (${sorted.length})`,
-    list
-  );
-  fragment.appendChild(collapsible);
   return fragment;
 }
 
@@ -3191,7 +3811,22 @@ function buildRoomSummary(roomId) {
         group = { dayKey, slotCode, entries: [] };
         slotGroups.set(key, group);
       }
-      group.entries.push({ periodId, entry });
+      group.entries.push({ type: 'class', periodId, entry });
+    });
+  });
+
+  Object.entries(state.meetingSchedule).forEach(([meetingId, slots]) => {
+    const meeting = getMeetingById(meetingId);
+    Object.entries(slots).forEach(([key, entry]) => {
+      const resolvedRoom = getEffectiveMeetingRoom(meeting, entry);
+      if (resolvedRoom !== roomId) return;
+      const { dayKey, slotCode } = parseSlotKey(key);
+      let group = slotGroups.get(key);
+      if (!group) {
+        group = { dayKey, slotCode, entries: [] };
+        slotGroups.set(key, group);
+      }
+      group.entries.push({ type: 'meeting', meetingId, meeting, entry });
     });
   });
 
@@ -3226,38 +3861,68 @@ function buildRoomSummary(roomId) {
     titleSpan.textContent = formatCompactSlotLabel(group.dayKey, group.slotCode);
     header.appendChild(titleSpan);
 
+    const meetingCount = group.entries.filter((entry) => entry.type === 'meeting').length;
     if (group.entries.length > 1) {
       const warning = document.createElement('span');
       warning.className = 'summary-status';
       warning.dataset.status = 'danger';
       warning.textContent = `${group.entries.length} reservas`;
       header.appendChild(warning);
+    } else if (meetingCount > 0) {
+      const info = document.createElement('span');
+      info.className = 'summary-status';
+      info.dataset.status = 'info';
+      info.textContent = meetingCount === 1 ? '1 reunião' : `${meetingCount} reuniões`;
+      header.appendChild(info);
     }
 
     item.appendChild(header);
 
     const details = document.createElement('div');
     details.className = 'summary-item-details';
-    group.entries.forEach(({ periodId, entry }) => {
-      const discipline = getDisciplineById(entry.disciplineId);
-      const period = getPeriodById(periodId);
-      const professor = getProfessorById(entry.professorId);
+    group.entries.forEach((record) => {
       const line = document.createElement('p');
       line.className = 'summary-line';
-      const parts = [];
-      if (discipline) {
-        parts.push(formatDisciplineLabel(discipline));
+
+      if (record.type === 'meeting') {
+        const meeting = record.meeting || getMeetingById(record.meetingId);
+        const meetingType = meeting ? getMeetingTypeById(meeting.meetingTypeId) : null;
+        const participants = getEffectiveMeetingParticipants(meeting, record.entry);
+        const participantNames = participants
+          .map((id) => getProfessorById(id)?.name || id)
+          .filter(Boolean);
+        const parts = [];
+        parts.push(meeting ? `Reunião: ${meeting.name}` : `Reunião ${record.meetingId}`);
+        if (meetingType) {
+          parts.push(`Tipo: ${meetingType.name}`);
+        }
+        if (participantNames.length) {
+          parts.push(`Docentes: ${participantNames.join(', ')}`);
+        }
+        if (!parts.length) {
+          parts.push('Reserva de reunião sem detalhes cadastrados.');
+        }
+        line.textContent = parts.join(' • ');
+      } else {
+        const discipline = getDisciplineById(record.entry.disciplineId);
+        const period = getPeriodById(record.periodId);
+        const professor = getProfessorById(record.entry.professorId);
+        const parts = [];
+        if (discipline) {
+          parts.push(formatDisciplineLabel(discipline));
+        }
+        if (period) {
+          parts.push(`Período: ${period.name}`);
+        }
+        if (professor) {
+          parts.push(`Docente: ${professor.name}`);
+        }
+        if (!parts.length) {
+          parts.push('Reserva sem detalhes cadastrados.');
+        }
+        line.textContent = parts.join(' • ');
       }
-      if (period) {
-        parts.push(`Período: ${period.name}`);
-      }
-      if (professor) {
-        parts.push(`Docente: ${professor.name}`);
-      }
-      if (!parts.length) {
-        parts.push('Reserva sem detalhes cadastrados.');
-      }
-      line.textContent = parts.join(' • ');
+
       details.appendChild(line);
     });
 
@@ -3273,15 +3938,133 @@ function buildRoomSummary(roomId) {
   return fragment;
 }
 
+function buildMeetingSummary(meetingId) {
+  const meeting = getMeetingById(meetingId);
+  if (!meeting) return null;
+
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement('h3');
+  title.className = 'summary-title';
+  title.textContent = meeting.name;
+  fragment.appendChild(title);
+
+  const meetingType = getMeetingTypeById(meeting.meetingTypeId);
+  if (meetingType) {
+    const typeMeta = document.createElement('p');
+    typeMeta.className = 'summary-meta';
+    typeMeta.textContent = `Tipo de reunião: ${meetingType.name}`;
+    fragment.appendChild(typeMeta);
+  }
+
+  const defaultParticipants = sanitizeProfessorIdList(meeting.professorIds || []);
+  const defaultParticipantNames = defaultParticipants
+    .map((id) => getProfessorById(id)?.name || id)
+    .filter(Boolean);
+  const participantLine = document.createElement('p');
+  participantLine.className = 'summary-line';
+  participantLine.innerHTML = `<strong>Docentes padrão:</strong> ${
+    defaultParticipantNames.length ? defaultParticipantNames.join(', ') : 'Nenhum docente vinculado'
+  }`;
+  fragment.appendChild(participantLine);
+
+  const defaultRoom = meeting.roomId ? getRoomById(meeting.roomId) : null;
+  if (defaultRoom) {
+    const roomLine = document.createElement('p');
+    roomLine.className = 'summary-line';
+    roomLine.innerHTML = `<strong>Sala padrão:</strong> ${defaultRoom.name}`;
+    fragment.appendChild(roomLine);
+  }
+
+  const schedule = state.meetingSchedule[meetingId] || {};
+  const entries = Object.entries(schedule).map(([key, entry]) => {
+    const { dayKey, slotCode } = parseSlotKey(key);
+    return { key, entry, dayKey, slotCode };
+  });
+
+  if (!entries.length) {
+    fragment.appendChild(
+      createSummaryPlaceholder('Nenhum horário configurado para esta reunião.')
+    );
+    return fragment;
+  }
+
+  entries.sort(compareSlotPosition);
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+
+  entries.forEach((item) => {
+    const meetingEntry = document.createElement('li');
+    meetingEntry.className = 'summary-item';
+
+    const header = document.createElement('div');
+    header.className = 'summary-item-header';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'summary-item-title';
+    titleSpan.textContent = formatSlotLabel(item.dayKey, item.slotCode);
+    header.appendChild(titleSpan);
+
+    const participants = getEffectiveMeetingParticipants(meeting, item.entry);
+    const status = document.createElement('span');
+    status.className = 'summary-status';
+    status.dataset.status = 'info';
+    status.textContent = `${participants.length} docente${participants.length === 1 ? '' : 's'}`;
+    header.appendChild(status);
+
+    meetingEntry.appendChild(header);
+
+    const details = document.createElement('div');
+    details.className = 'summary-item-details';
+
+    const participantNames = participants
+      .map((id) => getProfessorById(id)?.name || id)
+      .filter(Boolean);
+    const participantLine = document.createElement('p');
+    participantLine.className = 'summary-line';
+    participantLine.innerHTML = `<strong>Docentes:</strong> ${
+      participantNames.length ? participantNames.join(', ') : 'Nenhum docente definido'
+    }`;
+    details.appendChild(participantLine);
+
+    const resolvedRoomId = getEffectiveMeetingRoom(meeting, item.entry);
+    const resolvedRoom = resolvedRoomId ? getRoomById(resolvedRoomId) : null;
+    const roomLine = document.createElement('p');
+    roomLine.className = 'summary-line';
+    roomLine.innerHTML = `<strong>Sala:</strong> ${
+      resolvedRoom ? resolvedRoom.name : resolvedRoomId ? `Sala ${resolvedRoomId}` : 'Não definida'
+    }`;
+    details.appendChild(roomLine);
+
+    meetingEntry.appendChild(details);
+    list.appendChild(meetingEntry);
+  });
+
+  fragment.appendChild(list);
+  return fragment;
+}
+
 function openAssignmentModalForSlots(slotsInput) {
   if (!state.selectedEntity) {
     alert('Selecione um item para editar o horário.');
+    return;
+  }
+  if (state.view === 'meeting') {
+    openMeetingAssignmentModal(Array.isArray(slotsInput) ? slotsInput : []);
     return;
   }
   const normalizedSlots = (Array.isArray(slotsInput) ? slotsInput : [])
     .map(({ dayKey, slotCode }) => ({ dayKey, slotCode }))
     .filter((slot) => slot.dayKey && slot.slotCode);
   if (!normalizedSlots.length) return;
+
+  const meetingConflict = normalizedSlots.some((slot) => {
+    const key = slotKey(slot.dayKey, slot.slotCode);
+    return getAssignmentsForSlot(key).some((assignment) => assignment.sourceType === 'meeting');
+  });
+  if (meetingConflict) {
+    alert('Edite reuniões pela visualização de reuniões.');
+    return;
+  }
 
   normalizedSlots.sort((a, b) => {
     const dayDiff = (dayOrder[a.dayKey] ?? 0) - (dayOrder[b.dayKey] ?? 0);
@@ -3319,7 +4102,8 @@ function openAssignmentModalForSlots(slotsInput) {
   state.assignmentEditing = {
     slots: normalizedSlots,
     details,
-    multi: normalizedSlots.length > 1
+    multi: normalizedSlots.length > 1,
+    mode: 'class'
   };
 
   const firstDetail = details[0];
@@ -3413,9 +4197,133 @@ function openAssignmentModalForSlots(slotsInput) {
   elements.modal.classList.remove('hidden');
 }
 
+function openMeetingAssignmentModal(slotsInput) {
+  const meetingId = state.selectedEntity;
+  const meeting = getMeetingById(meetingId);
+  if (!meeting) {
+    alert('Selecione uma reunião válida.');
+    return;
+  }
+
+  const normalizedSlots = (Array.isArray(slotsInput) ? slotsInput : [])
+    .map(({ dayKey, slotCode }) => ({ dayKey, slotCode }))
+    .filter((slot) => slot.dayKey && slot.slotCode);
+  if (!normalizedSlots.length) return;
+
+  normalizedSlots.sort((a, b) => compareSlotPosition(a, b));
+
+  populateModalSelects();
+
+  const details = normalizedSlots.map((slot) => {
+    const key = slotKey(slot.dayKey, slot.slotCode);
+    const schedule = ensureMeetingSchedule(meetingId);
+    const originalEntry = schedule[key] || null;
+    return { ...slot, key, originalEntry, meetingId, sourceType: 'meeting' };
+  });
+
+  state.assignmentEditing = {
+    mode: 'meeting',
+    meetingId,
+    slots: normalizedSlots,
+    details,
+    multi: normalizedSlots.length > 1
+  };
+
+  const firstDetail = details[0];
+  if (state.assignmentEditing.multi) {
+    elements.assignmentDay.value = `${details.length} horários selecionados`;
+    elements.assignmentSlot.value = 'Múltiplos blocos';
+  } else if (firstDetail) {
+    elements.assignmentDay.value = days.find((d) => d.key === firstDetail.dayKey)?.label || '';
+    elements.assignmentSlot.value = `${firstDetail.slotCode}`;
+  }
+
+  const meetingType = getMeetingTypeById(meeting.meetingTypeId);
+  if (elements.assignmentMeetingType) {
+    elements.assignmentMeetingType.value = meetingType ? meetingType.name : 'Tipo não definido';
+  }
+
+  if (elements.assignmentCourseFields) {
+    elements.assignmentCourseFields.classList.add('hidden');
+  }
+  if (elements.assignmentMeetingFields) {
+    elements.assignmentMeetingFields.classList.remove('hidden');
+  }
+
+  setSearchableDropdownDisabled(elements.assignmentDiscipline, true);
+  setSearchableDropdownDisabled(elements.assignmentPeriod, true);
+  setSearchableDropdownDisabled(elements.assignmentProfessor, true);
+  setSearchableDropdownDisabled(elements.assignmentRoom, false);
+
+  if (elements.assignmentRoom) {
+    elements.assignmentRoom.required = false;
+  }
+
+  updateMeetingProfessorOptions();
+
+  const defaultParticipants = getEffectiveMeetingParticipants(meeting, {});
+  let initialParticipants = defaultParticipants;
+  if (details.length === 1 && details[0].originalEntry) {
+    initialParticipants = getEffectiveMeetingParticipants(meeting, details[0].originalEntry);
+  } else if (details.length > 1) {
+    const participantSets = details.map((detail) =>
+      detail.originalEntry ? getEffectiveMeetingParticipants(meeting, detail.originalEntry).join('|') : null
+    );
+    const validSets = participantSets.filter((value) => value !== null);
+    const allEqual =
+      validSets.length === details.length && validSets.every((value) => value === validSets[0]);
+    if (allEqual && validSets[0] !== null) {
+      initialParticipants = sanitizeProfessorIdList(validSets[0].split('|').filter(Boolean));
+    }
+  }
+
+  if (elements.assignmentMeetingProfessors) {
+    const options = Array.from(elements.assignmentMeetingProfessors.options || []);
+    options.forEach((option) => {
+      option.selected = initialParticipants.includes(option.value);
+    });
+  }
+
+  let initialRoom = getEffectiveMeetingRoom(meeting, {});
+  if (details.length === 1 && details[0].originalEntry) {
+    initialRoom = getEffectiveMeetingRoom(meeting, details[0].originalEntry);
+  } else if (details.length > 1) {
+    const rooms = details.map((detail) =>
+      detail.originalEntry ? getEffectiveMeetingRoom(meeting, detail.originalEntry) : null
+    );
+    const validRooms = rooms.filter((value) => value);
+    const allEqual =
+      validRooms.length === details.length && validRooms.every((value) => value === validRooms[0]);
+    if (allEqual && validRooms.length) {
+      initialRoom = validRooms[0];
+    }
+  }
+
+  fillAssignmentRoomOptions({ preserveValue: false });
+  updateSearchableDropdownValue(elements.assignmentRoom, initialRoom || '');
+
+  elements.removeAssignment.textContent = state.assignmentEditing.multi
+    ? 'Limpar reuniões'
+    : 'Remover horário';
+
+  updateSuggestions();
+  elements.modal.classList.remove('hidden');
+}
 function closeModal() {
   elements.modal.classList.add('hidden');
   state.assignmentEditing = null;
+  if (elements.assignmentCourseFields) {
+    elements.assignmentCourseFields.classList.remove('hidden');
+  }
+  if (elements.assignmentMeetingFields) {
+    elements.assignmentMeetingFields.classList.add('hidden');
+  }
+  setSearchableDropdownDisabled(elements.assignmentDiscipline, false);
+  setSearchableDropdownDisabled(elements.assignmentPeriod, false);
+  setSearchableDropdownDisabled(elements.assignmentProfessor, false);
+  if (elements.assignmentRoom) {
+    elements.assignmentRoom.required = true;
+  }
 }
 
 elements.modalClose.addEventListener('click', closeModal);
@@ -3462,6 +4370,11 @@ elements.assignmentForm.addEventListener('submit', (event) => {
 
   const details = state.assignmentEditing.details;
   if (!details.length) return;
+
+  if (state.assignmentEditing.mode === 'meeting') {
+    handleMeetingAssignmentSubmit();
+    return;
+  }
 
   const disciplineId = elements.assignmentDiscipline.value;
   const periodId = elements.assignmentPeriod.value;
@@ -3527,6 +4440,10 @@ elements.assignmentForm.addEventListener('submit', (event) => {
 
 elements.removeAssignment.addEventListener('click', () => {
   if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
+  if (state.assignmentEditing.mode === 'meeting') {
+    removeMeetingAssignments();
+    return;
+  }
   const details = state.assignmentEditing.details;
   if (!details.length) return;
   let removed = false;
@@ -3548,12 +4465,42 @@ elements.removeAssignment.addEventListener('click', () => {
   });
 
   if (removed) {
-    persistState();
+    persistState({ markDirty: false });
     closeModal();
     renderSchedule();
     refreshLists();
   }
 });
+
+function removeMeetingAssignments() {
+  const context = state.assignmentEditing;
+  if (!context || context.mode !== 'meeting') return;
+  const details = Array.isArray(context.details) ? context.details : [];
+  if (!details.length) return;
+  const meetingId = context.meetingId;
+  const schedule = state.meetingSchedule[meetingId];
+  if (!schedule) {
+    closeModal();
+    renderSchedule();
+    return;
+  }
+  let removed = false;
+  details.forEach((detail) => {
+    if (schedule[detail.key]) {
+      delete schedule[detail.key];
+      removed = true;
+    }
+  });
+  if (removed) {
+    if (!Object.keys(schedule).length) {
+      delete state.meetingSchedule[meetingId];
+    }
+    persistState();
+    closeModal();
+    renderSchedule();
+    refreshLists();
+  }
+}
 
 function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, originalEntry }) {
   const conflicts = [];
@@ -3589,7 +4536,154 @@ function findConflicts({ periodId, professorId, roomId, key, originalPeriodId, o
     }
   });
 
+  Object.entries(state.meetingSchedule).forEach(([meetingId, slots]) => {
+    const entry = slots[key];
+    if (!entry) return;
+    const meeting = getMeetingById(meetingId);
+    const participants = getEffectiveMeetingParticipants(meeting, entry);
+    if (professorId && participants.includes(professorId)) {
+      conflicts.push(`Docente indisponível (reunião ${getMeetingLabel(meeting)}).`);
+    }
+    if (roomId) {
+      const meetingRoom = getEffectiveMeetingRoom(meeting, entry);
+      if (meetingRoom && meetingRoom === roomId) {
+        const room = getRoomById(roomId);
+        conflicts.push(
+          `Sala ${room ? room.name : roomId} ocupada pela reunião ${getMeetingLabel(meeting)}.`
+        );
+      }
+    }
+  });
+
   return [...new Set(conflicts)];
+}
+
+function findMeetingSlotConflicts({ meetingId, key, professorIds, roomId, originalEntry }) {
+  const conflicts = [];
+  const participants = sanitizeProfessorIdList(professorIds);
+
+  participants.forEach((professorId) => {
+    Object.entries(state.schedule).forEach(([periodId, slots]) => {
+      const entry = slots[key];
+      if (!entry) return;
+      if (entry.professorId !== professorId) return;
+      const professor = getProfessorById(professorId);
+      const period = getPeriodById(periodId);
+      const discipline = getDisciplineById(entry.disciplineId);
+      const labelParts = [];
+      if (period) {
+        labelParts.push(`período ${period.name}`);
+      }
+      if (discipline) {
+        labelParts.push(`disciplina ${formatDisciplineLabel(discipline)}`);
+      }
+      const label = labelParts.length ? labelParts.join(' • ') : 'outro compromisso';
+      conflicts.push(
+        `Docente ${professor ? professor.name : professorId} indisponível (${label}).`
+      );
+    });
+  });
+
+  if (roomId) {
+    Object.entries(state.schedule).forEach(([periodId, slots]) => {
+      const entry = slots[key];
+      if (!entry) return;
+      if (entry.roomId !== roomId) return;
+      const period = getPeriodById(periodId);
+      const discipline = getDisciplineById(entry.disciplineId);
+      const room = getRoomById(roomId);
+      const label = discipline ? formatDisciplineLabel(discipline) : 'outro compromisso';
+      conflicts.push(
+        `Sala ${room ? room.name : roomId} ocupada (${period ? period.name : periodId} • ${label}).`
+      );
+    });
+  }
+
+  Object.entries(state.meetingSchedule).forEach(([otherMeetingId, slots]) => {
+    const entry = slots[key];
+    if (!entry) return;
+    if (otherMeetingId === meetingId && entry === originalEntry) return;
+    const otherMeeting = getMeetingById(otherMeetingId);
+    const otherParticipants = getEffectiveMeetingParticipants(otherMeeting, entry);
+    const shared = participants.filter((id) => otherParticipants.includes(id));
+    if (shared.length) {
+      const names = shared
+        .map((id) => getProfessorById(id)?.name || id)
+        .join(', ');
+      conflicts.push(`Docente(s) ${names} em reunião ${getMeetingLabel(otherMeeting)}.`);
+    }
+    if (roomId) {
+      const otherRoom = getEffectiveMeetingRoom(otherMeeting, entry);
+      if (otherRoom && otherRoom === roomId) {
+        const room = getRoomById(roomId);
+        conflicts.push(
+          `Sala ${room ? room.name : roomId} utilizada pela reunião ${getMeetingLabel(otherMeeting)}.`
+        );
+      }
+    }
+  });
+
+  return [...new Set(conflicts)];
+}
+
+function handleMeetingAssignmentSubmit() {
+  const context = state.assignmentEditing;
+  if (!context || context.mode !== 'meeting') return;
+  const details = Array.isArray(context.details) ? context.details : [];
+  if (!details.length) return;
+  const meetingId = context.meetingId;
+  const meeting = getMeetingById(meetingId);
+  if (!meeting) {
+    alert('Reunião removida do cadastro.');
+    closeModal();
+    return;
+  }
+
+  const participants = sanitizeProfessorIdList(
+    Array.from(elements.assignmentMeetingProfessors?.selectedOptions || []).map((option) => option.value)
+  );
+  if (!participants.length) {
+    alert('Selecione ao menos um docente para a reunião.');
+    return;
+  }
+
+  const roomId = elements.assignmentRoom?.value || '';
+
+  const conflictMessages = [];
+  details.forEach((detail) => {
+    const conflicts = findMeetingSlotConflicts({
+      meetingId,
+      key: detail.key,
+      professorIds: participants,
+      roomId,
+      originalEntry: detail.originalEntry
+    });
+    conflicts.forEach((message) => {
+      conflictMessages.push(`${formatSlotLabel(detail.dayKey, detail.slotCode)}: ${message}`);
+    });
+  });
+
+  if (conflictMessages.length) {
+    const proceed = confirm(
+      `Existem conflitos nestes horários:\n\n${conflictMessages.join('\n')}\n\nDeseja substituir mesmo assim?`
+    );
+    if (!proceed) {
+      return;
+    }
+  }
+
+  details.forEach((detail) => {
+    const schedule = ensureMeetingSchedule(meetingId);
+    schedule[detail.key] = {
+      professorIds: participants,
+      roomId
+    };
+  });
+
+  persistState();
+  closeModal();
+  renderSchedule();
+  refreshLists();
 }
 
 function getAssignmentDetails() {
@@ -3615,7 +4709,17 @@ function getAvailableRoomsForDetails(details) {
           detail.originalEntry && detail.originalPeriodId === pId && entry === detail.originalEntry;
         if (isSameRecord) return false;
         return entry.roomId === room.id;
-      });
+      }) &&
+        !Object.entries(state.meetingSchedule).some(([meetingId, slots]) => {
+          const entry = slots?.[key];
+          if (!entry) return false;
+          if (detail.sourceType === 'meeting' && detail.meetingId === meetingId && detail.originalEntry === entry) {
+            return false;
+          }
+          const meeting = getMeetingById(meetingId);
+          const meetingRoom = getEffectiveMeetingRoom(meeting, entry);
+          return meetingRoom && meetingRoom === room.id;
+        });
     });
   });
 }
@@ -3624,6 +4728,15 @@ function updateSuggestions() {
   if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
   const details = state.assignmentEditing.details;
   if (!details.length) return;
+
+  if (state.assignmentEditing.mode === 'meeting') {
+    fillAssignmentRoomOptions();
+    if (elements.suggestions) {
+      elements.suggestions.innerHTML =
+        '<span>Selecione os docentes e a sala. Conflitos são verificados ao salvar.</span>';
+    }
+    return;
+  }
 
   const availableRooms = getAvailableRoomsForDetails(details);
   fillAssignmentRoomOptions({ availableRooms });
@@ -3649,7 +4762,17 @@ function updateSuggestions() {
       const isSameRecord = detail.originalEntry && entry === detail.originalEntry && pId === detail.originalPeriodId;
       if (isSameRecord) return false;
       return entry.professorId === professor.id;
-    });
+    }) &&
+      !Object.entries(state.meetingSchedule).some(([meetingId, slots]) => {
+        const entry = slots[key];
+        if (!entry) return false;
+        if (detail.sourceType === 'meeting' && detail.meetingId === meetingId && detail.originalEntry === entry) {
+          return false;
+        }
+        const meeting = getMeetingById(meetingId);
+        const participants = getEffectiveMeetingParticipants(meeting, entry);
+        return participants.includes(professor.id);
+      });
   });
 
   const periodConflicts = [];
@@ -4201,6 +5324,8 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
     (entry) => normalizeConfigName(entry?.name) === normalized
   );
 
+  let savedEntry = null;
+
   if (existingIndex >= 0) {
     if (!skipConfirmation) {
       const confirmed = confirm(
@@ -4223,6 +5348,7 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
         throw new Error('Resposta inválida do servidor.');
       }
       savedConfigurations[existingIndex] = updated;
+      savedEntry = updated;
     } catch (error) {
       console.error('Erro ao atualizar configuração no servidor.', error);
       if (notify) {
@@ -4237,6 +5363,7 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
         throw new Error('Resposta inválida do servidor.');
       }
       savedConfigurations.push(created);
+      savedEntry = created;
     } catch (error) {
       console.error('Erro ao criar configuração no servidor.', error);
       if (notify) {
@@ -4248,6 +5375,10 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
 
   sortSavedConfigurations();
   renderSavedConfigurations();
+  if (savedEntry) {
+    activateConfigurationEntry(savedEntry, { status: ACTIVE_CONFIG_STATUS.SYNCED });
+    persistState({ markDirty: false });
+  }
   if (notify) {
     setStorageFeedback(`Configuração "${trimmedName}" salva no servidor.`, 'success');
   }
@@ -4275,7 +5406,8 @@ async function handleSavedConfigurationsClick(event) {
     } else {
       rebuildCounters();
     }
-    persistState();
+    activateConfigurationEntry(config, { status: ACTIVE_CONFIG_STATUS.SYNCED });
+    persistState({ markDirty: false });
     setStorageFeedback(`Configuração "${config.name}" carregada com sucesso.`, 'success');
     return;
   }
@@ -4291,6 +5423,9 @@ async function handleSavedConfigurationsClick(event) {
     try {
       await deleteServerConfigurationEntry(configId);
       savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
+      if (state.activeConfigurationId === configId) {
+        resetActiveConfiguration();
+      }
       renderSavedConfigurations();
       setStorageFeedback(`Configuração "${config.name}" removida do servidor.`, 'warning');
     } catch (error) {
@@ -4313,20 +5448,66 @@ async function handleConfigSaveSubmit(event) {
   }
 }
 
+async function handleQuickConfigSave() {
+  if (state.activeConfigurationStatus === ACTIVE_CONFIG_STATUS.SAVING) {
+    return;
+  }
+
+  let targetName = (state.activeConfigurationName || '').trim();
+  if (!targetName) {
+    const response = prompt('Informe um nome para a configuração atual:');
+    const trimmed = (response || '').trim();
+    if (!trimmed) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+      setStorageFeedback('Informe um nome para salvar a configuração atual.', 'warning');
+      return;
+    }
+    targetName = trimmed;
+    state.activeConfigurationName = targetName;
+    updateActiveConfigurationDisplay();
+  }
+
+  clearActiveConfigurationAutosave();
+  updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SAVING, { force: true });
+
+  const result = await upsertSavedConfiguration(targetName, null, {
+    skipConfirmation: true,
+    notify: true
+  });
+
+  if (result === 'success') {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.SYNCED, { force: true });
+  } else if (result === 'error') {
+    updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.ERROR, { force: true });
+    setStorageFeedback('Não foi possível sincronizar a configuração ativa.', 'error');
+  } else {
+    if (!state.activeConfigurationId) {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.NEEDS_NAME, { force: true });
+    } else {
+      updateActiveConfigurationStatus(ACTIVE_CONFIG_STATUS.DIRTY, { force: true });
+    }
+  }
+}
+
 function getPersistableSnapshot() {
   return {
     periods: state.periods,
     professors: state.professors,
     rooms: state.rooms,
     disciplines: state.disciplines,
+    meetingTypes: state.meetingTypes,
+    meetings: state.meetings,
     schedule: state.schedule,
+    meetingSchedule: state.meetingSchedule,
     view: state.view,
-    selectedEntity: state.selectedEntity
+    selectedEntity: state.selectedEntity,
+    activeConfigurationId: state.activeConfigurationId,
+    activeConfigurationName: state.activeConfigurationName
   };
 }
 
 function persistState(options = {}) {
-  const { notify = false } = options;
+  const { notify = false, markDirty = true } = options;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableSnapshot()));
     localStorage.setItem(COUNTERS_KEY, JSON.stringify(counters));
@@ -4336,6 +5517,10 @@ function persistState(options = {}) {
   } catch (error) {
     console.error('Erro ao salvar dados no navegador.', error);
     setStorageFeedback('Não foi possível salvar os dados localmente.', 'error');
+  } finally {
+    if (markDirty) {
+      markActiveConfigurationDirty();
+    }
   }
 }
 
@@ -4356,7 +5541,9 @@ function rebuildCounters() {
     period: nextCounterValue(state.periods, 'period'),
     professor: nextCounterValue(state.professors, 'professor'),
     room: nextCounterValue(state.rooms, 'room'),
-    discipline: nextCounterValue(state.disciplines, 'discipline')
+    discipline: nextCounterValue(state.disciplines, 'discipline'),
+    meetingType: nextCounterValue(state.meetingTypes, 'meetingType'),
+    meeting: nextCounterValue(state.meetings, 'meeting')
   };
 }
 
@@ -4381,9 +5568,23 @@ function applyStateFromData(data) {
         }))
     : [];
   state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
+  state.meetingTypes = Array.isArray(data.meetingTypes)
+    ? data.meetingTypes.map((record) => normalizeMeetingTypeRecord(record)).filter(Boolean)
+    : [];
+  state.meetings = Array.isArray(data.meetings)
+    ? data.meetings.map((record) => normalizeMeetingRecord(record)).filter(Boolean)
+    : [];
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
+  state.meetingSchedule = sanitizeMeetingSchedulePayload(data.meetingSchedule);
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
+  state.activeConfigurationId = typeof data.activeConfigurationId === 'string' ? data.activeConfigurationId : '';
+  state.activeConfigurationName = typeof data.activeConfigurationName === 'string' ? data.activeConfigurationName : '';
+  const hasActiveConfiguration = state.activeConfigurationId && state.activeConfigurationName;
+  updateActiveConfigurationStatus(
+    hasActiveConfiguration ? ACTIVE_CONFIG_STATUS.SYNCED : ACTIVE_CONFIG_STATUS.IDLE,
+    { force: true }
+  );
   state.assignmentEditing = null;
   state.entityEditing = null;
   state.selectedSlots = new Set();
@@ -4425,7 +5626,7 @@ function restoreStateFromStorage(options = {}) {
     } else {
       rebuildCounters();
     }
-    persistState();
+    persistState({ markDirty: false });
     if (notify) {
       setStorageFeedback('Configuração carregada do navegador.', 'success');
     }
@@ -4560,13 +5761,17 @@ function clearAllData() {
   state.professors = [];
   state.rooms = [];
   state.disciplines = [];
+  state.meetingTypes = [];
+  state.meetings = [];
   state.schedule = {};
+  state.meetingSchedule = {};
   state.view = 'period';
   state.selectedEntity = '';
   state.assignmentEditing = null;
   state.entityEditing = null;
   clearSelectedSlots();
-  counters = { period: 1, professor: 1, room: 1, discipline: 1 };
+  resetActiveConfiguration();
+  counters = { period: 1, professor: 1, room: 1, discipline: 1, meetingType: 1, meeting: 1 };
   elements.viewTypeSelect.value = state.view;
   professorFormDisciplineIds.clear();
   if (elements.professorDisciplineSelect) {
@@ -4593,13 +5798,18 @@ function bindStorageControls() {
   if (elements.savedConfigList) {
     elements.savedConfigList.addEventListener('click', handleSavedConfigurationsClick);
   }
+  if (elements.quickSaveButton) {
+    elements.quickSaveButton.addEventListener('click', handleQuickConfigSave);
+  }
   if (elements.refreshConfigsButton) {
     elements.refreshConfigsButton.addEventListener('click', () => {
       loadSavedConfigurationsFromServer({ notify: true });
     });
   }
   if (elements.saveBrowserButton) {
-    elements.saveBrowserButton.addEventListener('click', () => persistState({ notify: true }));
+    elements.saveBrowserButton.addEventListener('click', () =>
+      persistState({ notify: true, markDirty: false })
+    );
   }
   if (elements.restoreBrowserButton) {
     elements.restoreBrowserButton.addEventListener('click', () => restoreStateFromStorage({ notify: true }));
@@ -4694,7 +5904,9 @@ function bindSearchFilters() {
     ['period', elements.periodSearch],
     ['professor', elements.professorSearch],
     ['room', elements.roomSearch],
-    ['discipline', elements.disciplineSearch]
+    ['discipline', elements.disciplineSearch],
+    ['meetingType', elements.meetingTypeSearch],
+    ['meeting', elements.meetingSearch]
   ];
 
   mappings.forEach(([type, input]) => {
@@ -4735,6 +5947,8 @@ function resetSearchFilters() {
   searchQueries.professor = '';
   searchQueries.room = '';
   searchQueries.discipline = '';
+  searchQueries.meetingType = '';
+  searchQueries.meeting = '';
 
   searchFilters.professor.onlyCourseArea = false;
   searchFilters.discipline.periodId = '';
@@ -4744,6 +5958,8 @@ function resetSearchFilters() {
   if (elements.professorSearch) elements.professorSearch.value = '';
   if (elements.roomSearch) elements.roomSearch.value = '';
   if (elements.disciplineSearch) elements.disciplineSearch.value = '';
+  if (elements.meetingTypeSearch) elements.meetingTypeSearch.value = '';
+  if (elements.meetingSearch) elements.meetingSearch.value = '';
   if (elements.professorAreaFilter) elements.professorAreaFilter.checked = false;
   if (elements.disciplinePeriodFilter) elements.disciplinePeriodFilter.value = '';
   if (elements.roomPeriodFilter) elements.roomPeriodFilter.value = '';
@@ -4884,6 +6100,65 @@ function bindForms() {
       resetDisciplineColorInput();
       updateDisciplineColorSuggestion({ force: true });
       refreshLists();
+      persistState();
+    });
+  }
+
+  if (elements.meetingTypeForm) {
+    elements.meetingTypeForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const nameInput = elements.meetingTypeNameInput;
+      if (!nameInput) return;
+      const name = nameInput.value.trim();
+      if (!name) return;
+      const color = normalizeHexColor(elements.meetingTypeColorInput?.value || '');
+      state.meetingTypes.push({ id: generateId('meetingType'), name, color });
+      nameInput.value = '';
+      if (elements.meetingTypeColorInput) {
+        elements.meetingTypeColorInput.value = '#277da1';
+      }
+      refreshLists();
+      persistState();
+    });
+  }
+
+  if (elements.meetingForm) {
+    elements.meetingForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const nameInput = elements.meetingNameInput;
+      const typeSelect = elements.meetingTypeSelect;
+      if (!nameInput || !typeSelect) return;
+      const name = nameInput.value.trim();
+      const meetingTypeId = typeSelect.value;
+      if (!name || !meetingTypeId) {
+        alert('Informe o nome e selecione um tipo de reunião.');
+        return;
+      }
+      const professorIds = sanitizeProfessorIdList(
+        Array.from(elements.meetingProfessorSelect?.selectedOptions || []).map(
+          (option) => option.value
+        )
+      );
+      const roomId = elements.meetingRoomSelect?.value || '';
+      state.meetings.push({
+        id: generateId('meeting'),
+        name,
+        meetingTypeId,
+        professorIds,
+        roomId
+      });
+      nameInput.value = '';
+      typeSelect.value = '';
+      if (elements.meetingProfessorSelect) {
+        Array.from(elements.meetingProfessorSelect.options).forEach((option) => {
+          option.selected = false;
+        });
+      }
+      if (elements.meetingRoomSelect) {
+        elements.meetingRoomSelect.value = '';
+      }
+      refreshLists();
+      updateEntitySelector();
       persistState();
     });
   }
