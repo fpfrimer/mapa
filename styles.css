@@ -445,6 +445,19 @@ body.theme-dark .top-bar__section--selection {
   align-self: flex-start;
 }
 
+.meeting-form {
+  align-items: flex-start;
+}
+
+.meeting-form select[multiple] {
+  min-height: 9.5rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.meeting-form select[multiple] option {
+  padding: 0.35rem 0.25rem;
+}
+
 .discipline-picker-control {
   display: flex;
   align-items: center;
@@ -1422,6 +1435,17 @@ body.theme-dark .top-bar__icon-button.is-active {
   min-height: 1rem;
 }
 
+.meeting-content {
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem 0.5rem 0.85rem;
+}
+
+.meeting-content:not(.with-discipline-color) {
+  background: rgba(39, 125, 161, 0.12);
+  border-left: 6px solid rgba(39, 125, 161, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(39, 125, 161, 0.12);
+}
+
 .slot-content.with-discipline-color {
   border-left: 6px solid var(--discipline-color, transparent);
   background: var(--discipline-fill, rgba(31, 45, 61, 0.05));
@@ -1447,6 +1471,14 @@ body.theme-dark .top-bar__icon-button.is-active {
 .slot-empty {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+#assignment-meeting-fields .form-field {
+  flex: 1 1 100%;
+}
+
+#assignment-meeting-fields select[multiple] {
+  min-height: 9rem;
 }
 
 .session-label {
@@ -1863,6 +1895,17 @@ body.theme-dark .top-bar__icon-button.is-active {
   white-space: nowrap;
 }
 
+.badge.meeting {
+  background: rgba(39, 125, 161, 0.18);
+  color: #1d4d64;
+  font-weight: 600;
+}
+
+.badge.info {
+  background: rgba(96, 125, 139, 0.18);
+  color: #34515e;
+}
+
 .badge.area,
 .entity-badge.area {
   background: rgba(0, 150, 136, 0.18);
@@ -1908,6 +1951,11 @@ body.theme-dark .top-bar__icon-button.is-active {
 .entity-badge.success {
   background: rgba(46, 125, 50, 0.15);
   color: var(--success);
+}
+
+.entity-badge.info {
+  background: rgba(96, 125, 139, 0.18);
+  color: #34515e;
 }
 
 .entity-badge.warning {
