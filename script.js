@@ -2545,22 +2545,44 @@ function buildCellContent(assignments) {
   }
 
   const errorSet = new Set();
+  const escapeAttribute = (value) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
 
   const parts = assignments.map(({ periodId, data }) => {
     const discipline = getDisciplineById(data.disciplineId);
     const professor = getProfessorById(data.professorId);
     const room = getRoomById(data.roomId);
     const period = getPeriodById(periodId);
+    const disciplineLabel = discipline ? formatDisciplineLabel(discipline) : '';
     const lines = [];
-    if (discipline) lines.push(`<strong>${formatDisciplineLabel(discipline)}</strong>`);
-    if (period) lines.push(`<span class="badge period">${period.name}</span>`);
-    if (professor) {
-      lines.push(`<span class="badge docente">${professor.name}</span>`);
-      if (professor.isCourseArea) {
-        lines.push('<span class="badge area">Área do curso</span>');
-      }
+
+    if (period) {
+      lines.push(
+        `<span class="slot-line slot-line-period"><span class="badge period">${period.name}</span></span>`
+      );
     }
-    if (room) lines.push(`<span class="badge room">Sala ${room.name}</span>`);
+
+    if (professor) {
+      let professorLine = `<span class="badge docente">${professor.name}`;
+      if (professor.isCourseArea) {
+        professorLine +=
+          '<span class="course-area-indicator" aria-hidden="true"></span><span class="visually-hidden">Docente da área do curso</span>';
+      }
+      professorLine += '</span>';
+      lines.push(`<span class="slot-line slot-line-professor">${professorLine}</span>`);
+    }
+
+    if (room) {
+      lines.push(
+        `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
+      );
+    }
+
     const classes = ['slot-content'];
     const styleParts = [];
     const baseColor = getDisciplineColor(discipline);
@@ -2575,8 +2597,16 @@ function buildCellContent(assignments) {
 
     collectAssignmentErrors(periodId, data).forEach((error) => errorSet.add(error));
 
+    const attributes = [];
+    if (disciplineLabel) {
+      const accessibleLabel = `Disciplina: ${disciplineLabel}`;
+      const escapedLabel = escapeAttribute(accessibleLabel);
+      attributes.push(`title="${escapedLabel}"`, `aria-label="${escapedLabel}"`);
+    }
+
     const styleAttr = styleParts.length ? ` style="${styleParts.join('; ')}"` : '';
-    return `<div class="${classes.join(' ')}"${styleAttr}>${lines.join('')}</div>`;
+    const attrString = attributes.length ? ` ${attributes.join(' ')}` : '';
+    return `<div class="${classes.join(' ')}"${styleAttr}${attrString}>${lines.join('')}</div>`;
   });
 
   const errors = [...errorSet];
