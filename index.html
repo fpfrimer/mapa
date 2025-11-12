@@ -226,6 +226,10 @@
         </form>
         <div class="list-tools">
           <input type="search" id="professor-search" placeholder="Buscar docentes" aria-label="Buscar docentes" />
+          <label class="checkbox-field" for="professor-filter-area">
+            <input type="checkbox" id="professor-filter-area" />
+            <span>Somente área do curso</span>
+          </label>
         </div>
         <div class="list-container">
           <ul id="professor-list" class="entity-list"></ul>
@@ -240,6 +244,9 @@
         </form>
         <div class="list-tools">
           <input type="search" id="room-search" placeholder="Buscar salas" aria-label="Buscar salas" />
+          <select id="room-filter-period" aria-label="Filtrar salas por período">
+            <option value="">Todos os períodos</option>
+          </select>
         </div>
         <div class="list-container">
           <ul id="room-list" class="entity-list"></ul>
@@ -270,6 +277,9 @@
         </form>
         <div class="list-tools">
           <input type="search" id="discipline-search" placeholder="Buscar disciplinas" aria-label="Buscar disciplinas" />
+          <select id="discipline-filter-period" aria-label="Filtrar disciplinas por período">
+            <option value="">Todos os períodos</option>
+          </select>
         </div>
         <div class="list-container">
           <ul id="discipline-list" class="entity-list"></ul>
