@@ -51,9 +51,12 @@
             id="toggle-multi-select"
             class="icon-button top-bar__icon-button"
             aria-pressed="false"
+            aria-label="Ativar seleção múltipla"
             title="Ativar seleção múltipla"
           >
-            <span class="icon" aria-hidden="true">🗂️</span>
+            <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-multi-select"></use>
+            </svg>
             <span class="visually-hidden">Ativar seleção múltipla</span>
           </button>
           <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
@@ -62,20 +65,26 @@
               type="button"
               id="edit-selection"
               class="icon-button top-bar__icon-button"
+              aria-label="Editar seleção"
               title="Editar seleção"
               disabled
             >
-              <span class="icon" aria-hidden="true">✏️</span>
+              <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+                <use href="assets/icons/ui-icons.svg#icon-edit"></use>
+              </svg>
               <span class="visually-hidden">Editar seleção</span>
             </button>
             <button
               type="button"
               id="clear-selection"
               class="icon-button top-bar__icon-button"
+              aria-label="Limpar seleção"
               title="Limpar seleção"
               disabled
             >
-              <span class="icon" aria-hidden="true">🗑️</span>
+              <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+                <use href="assets/icons/ui-icons.svg#icon-delete"></use>
+              </svg>
               <span class="visually-hidden">Limpar seleção</span>
             </button>
           </div>
@@ -96,7 +105,9 @@
           aria-label="Períodos"
           title="Gerenciar períodos"
         >
-          <span class="icon" aria-hidden="true">🗓️</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-period"></use>
+          </svg>
           <span class="label visually-hidden">Períodos</span>
         </button>
         <button
@@ -108,7 +119,9 @@
           aria-label="Docentes"
           title="Gerenciar docentes"
         >
-          <span class="icon" aria-hidden="true">👩‍🏫</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-professor"></use>
+          </svg>
           <span class="label visually-hidden">Docentes</span>
         </button>
         <button
@@ -120,7 +133,9 @@
           aria-label="Salas"
           title="Gerenciar salas"
         >
-          <span class="icon" aria-hidden="true">🏫</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-room"></use>
+          </svg>
           <span class="label visually-hidden">Salas</span>
         </button>
         <button
@@ -132,7 +147,9 @@
           aria-label="Disciplinas"
           title="Gerenciar disciplinas"
         >
-          <span class="icon" aria-hidden="true">📚</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-discipline"></use>
+          </svg>
           <span class="label visually-hidden">Disciplinas</span>
         </button>
 
@@ -146,7 +163,9 @@
           aria-label="Configurações"
           title="Configurações salvas"
         >
-          <span class="icon" aria-hidden="true">⚙️</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-settings"></use>
+          </svg>
           <span class="label visually-hidden">Configurações</span>
         </button>
         <button
@@ -157,7 +176,9 @@
           aria-label="Ativar modo noturno"
           title="Ativar modo noturno"
         >
-          <span class="icon" aria-hidden="true">🌙</span>
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false">
+            <use href="assets/icons/ui-icons.svg#icon-moon"></use>
+          </svg>
           <span class="label visually-hidden">Modo noturno</span>
         </button>
       </nav>
@@ -213,7 +234,9 @@
                 aria-label="Adicionar disciplina"
                 title="Adicionar disciplina"
               >
-                <span aria-hidden="true">➕</span>
+                <svg class="icon icon--small" aria-hidden="true" focusable="false">
+                  <use href="assets/icons/ui-icons.svg#icon-add"></use>
+                </svg>
               </button>
             </div>
             <ul id="professor-discipline-list" class="chip-list"></ul>
