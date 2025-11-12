@@ -6718,7 +6718,6 @@ elements.entitySelector.addEventListener('change', (event) => {
 
 async function init() {
   setupDarkModeToggle();
-  await loadSavedConfigurationsFromServer();
   setupProfessorFormControls();
   setupSearchableDropdowns();
   bindForms();
@@ -6728,6 +6727,8 @@ async function init() {
   bindSearchFilters();
   resetSearchFilters();
   updateSelectionUI();
+  renderSavedConfigurations();
+  loadSavedConfigurationsFromServer().catch(() => {});
   setStorageFeedback('');
   const restored = restoreStateFromStorage();
   if (!restored) {
