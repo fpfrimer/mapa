@@ -1,8 +1,10 @@
 const MEETING_TYPES = [
   { id: 'meeting-colegiado', name: 'Colegiado', color: '#277da1' },
   { id: 'meeting-nde', name: 'NDE', color: '#577590' },
-  { id: 'meeting-coordenacao', name: 'Coordenação', color: '#f3722c' }
+  { id: 'meeting-coordenacao', name: 'Lotação', color: '#f3722c' }
 ];
+
+const MEETING_OVERVIEW_ID = '__meeting_overview__';
 
 const MEETING_TYPE_ID_SET = new Set(MEETING_TYPES.map((type) => type.id));
 
@@ -32,7 +34,8 @@ const state = {
   activeConfigurationId: '',
   activeConfigurationName: '',
   activeConfigurationStatus: 'idle',
-  selectedSlots: new Set()
+  selectedSlots: new Set(),
+  activeMeetingSlot: null
 };
 
 let counters = {
@@ -131,6 +134,19 @@ function updateIconReference(svgElement, symbolId) {
   const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
   use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
   use.setAttribute('href', reference);
+}
+
+function escapeHtmlText(value) {
+  return (typeof value === 'string' ? value : '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeAttributeValue(value) {
+  return escapeHtmlText(value)
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function createVisuallyHiddenText(label) {
@@ -528,6 +544,15 @@ function getProfessorMeetingTypeLabels(professor) {
     .map((id) => getMeetingTypeById(id))
     .filter(Boolean)
     .map((type) => type.name);
+}
+
+function getProfessorsForMeetingType(meetingTypeId) {
+  if (!meetingTypeId) return [];
+  const participants = state.professors
+    .filter((professor) => getProfessorMeetingTypeIds(professor).includes(meetingTypeId))
+    .map((professor) => professor.id)
+    .filter(Boolean);
+  return sanitizeProfessorIdList(participants);
 }
 
 function professorHasDiscipline(professor, disciplineId) {
@@ -1516,10 +1541,14 @@ function buildScheduleHeading() {
       return `Cronograma da sala ${room.name}`;
     }
   } else if (state.view === 'meeting') {
+    if (state.selectedEntity === MEETING_OVERVIEW_ID) {
+      return 'Disponibilidade dos comitês';
+    }
     const meeting = getMeetingById(state.selectedEntity);
     if (meeting) {
       return `Cronograma da reunião ${meeting.name}`;
     }
+    return 'Disponibilidade dos comitês';
   }
 
   return 'Cronograma selecionado';
@@ -2632,7 +2661,12 @@ function updateEntitySelector() {
   if (state.view === 'period') source = state.periods;
   if (state.view === 'professor') source = state.professors;
   if (state.view === 'room') source = state.rooms;
-  if (state.view === 'meeting') source = state.meetings;
+  if (state.view === 'meeting') {
+    source = [
+      { id: MEETING_OVERVIEW_ID, name: 'Disponibilidade dos comitês', isOverview: true },
+      ...state.meetings
+    ];
+  }
   source.forEach((item) => {
     const option = document.createElement('option');
     option.value = item.id;
@@ -2650,30 +2684,38 @@ function updateEntitySelector() {
         label = `${label} • Reuniões: ${meetingLabels.join(', ')}`;
       }
     } else if (state.view === 'meeting') {
-      const meetingType = getMeetingTypeById(item.meetingTypeId);
-      const professors = Array.isArray(item.professorIds)
-        ? item.professorIds
-            .map((id) => getProfessorById(id)?.name)
-            .filter(Boolean)
-            .join(', ')
-        : '';
-      const parts = [item.name];
-      if (meetingType) {
-        parts.push(`Tipo: ${meetingType.name}`);
+      if (item.isOverview) {
+        label = item.name;
+      } else {
+        const meetingType = getMeetingTypeById(item.meetingTypeId);
+        const professors = Array.isArray(item.professorIds)
+          ? item.professorIds
+              .map((id) => getProfessorById(id)?.name)
+              .filter(Boolean)
+              .join(', ')
+          : '';
+        const parts = [item.name];
+        if (meetingType) {
+          parts.push(`Tipo: ${meetingType.name}`);
+        }
+        if (professors) {
+          parts.push(`Docentes: ${professors}`);
+        }
+        label = parts.join(' • ');
       }
-      if (professors) {
-        parts.push(`Docentes: ${professors}`);
-      }
-      label = parts.join(' • ');
     }
     option.textContent = label;
     entitySelector.appendChild(option);
   });
-  if (!source.some((item) => item.id === state.selectedEntity)) {
-    state.selectedEntity = '';
+  const hasSelection = source.some((item) => item.id === state.selectedEntity);
+  if (!hasSelection) {
+    state.selectedEntity = state.view === 'meeting' ? MEETING_OVERVIEW_ID : '';
   }
-  if (!state.selectedEntity) {
+  if (!state.selectedEntity && state.view !== 'meeting') {
     clearSelectedSlots();
+  }
+  if (state.view === 'meeting' && state.selectedEntity !== MEETING_OVERVIEW_ID) {
+    state.activeMeetingSlot = null;
   }
   syncSearchableDropdownOptions(entitySelector);
   updateSearchableDropdownValue(entitySelector, state.selectedEntity || '');
@@ -2800,6 +2842,9 @@ function clearSelectedSlots(options = {}) {
   if (!preserveMode) {
     state.multiSelectMode = false;
   }
+  if (state.view === 'meeting') {
+    state.activeMeetingSlot = null;
+  }
   updateSelectionUI();
 }
 
@@ -2832,6 +2877,17 @@ function handleSlotClick(button, dayKey, slotCode) {
   if (state.multiSelectMode) {
     toggleSlotSelection(dayKey, slotCode, button);
     return;
+  }
+  if (state.view === 'meeting') {
+    const meeting = getMeetingById(state.selectedEntity);
+    const isOverview =
+      !state.selectedEntity || state.selectedEntity === MEETING_OVERVIEW_ID || !meeting;
+    if (isOverview) {
+      state.activeMeetingSlot = { dayKey, slotCode };
+      renderSchedule();
+      renderViewSummary();
+      return;
+    }
   }
   clearRelatedHighlights();
   openAssignmentModalForSlots([{ dayKey, slotCode }]);
@@ -3158,6 +3214,65 @@ function getMeetingAssignmentsForSlot(key) {
   return results;
 }
 
+function getMeetingTypeStatusesForSlot(dayKey, slotCode) {
+  const key = slotKey(dayKey, slotCode);
+  const assignments = getAssignmentsForSlot(key);
+  return MEETING_TYPES.map((type) => {
+    const participants = getProfessorsForMeetingType(type.id);
+    const participantSet = new Set(participants);
+    const busySet = new Set();
+
+    assignments.forEach((assignment) => {
+      if (!assignment) return;
+      if (assignment.sourceType === 'class') {
+        const professorId = assignment.data?.professorId || '';
+        if (professorId && participantSet.has(professorId)) {
+          busySet.add(professorId);
+        }
+        return;
+      }
+      if (assignment.sourceType === 'meeting') {
+        const meeting = getMeetingById(assignment.meetingId);
+        const participantsInMeeting = getEffectiveMeetingParticipants(meeting, assignment.data);
+        participantsInMeeting.forEach((professorId) => {
+          if (participantSet.has(professorId)) {
+            busySet.add(professorId);
+          }
+        });
+      }
+    });
+
+    const busyProfessorIds = Array.from(busySet);
+    const freeProfessorIds = participants.filter((id) => !busySet.has(id));
+    let availability = 'unassigned';
+    if (participants.length) {
+      if (busyProfessorIds.length === 0) {
+        availability = 'available';
+      } else if (freeProfessorIds.length === 0) {
+        availability = 'busy';
+      } else {
+        availability = 'partial';
+      }
+    }
+
+    const conflicts = participants.length
+      ? findMeetingSlotConflicts({ meetingId: null, key, professorIds: participants, roomId: '', originalEntry: null })
+      : [];
+
+    return {
+      sourceType: 'meeting-type-status',
+      meetingTypeId: type.id,
+      label: type.name,
+      color: type.color,
+      participants,
+      busyProfessorIds,
+      freeProfessorIds,
+      availability,
+      conflicts
+    };
+  });
+}
+
 function getEffectiveMeetingParticipants(meeting, entry) {
   const explicit = sanitizeProfessorIdList(entry?.professorIds || []);
   if (explicit.length) {
@@ -3244,25 +3359,70 @@ function collectAssignmentErrors(periodId, data) {
   return [...new Set(errors)];
 }
 
+function buildMeetingAvailabilityCell(statusEntries) {
+  const entries = statusEntries.filter((entry) => entry?.sourceType === 'meeting-type-status');
+  if (!entries.length) {
+    return { html: '<span class="slot-empty">Sem dados de comitês</span>', errors: [] };
+  }
+
+  const errorSet = new Set();
+  const lines = entries.map((entry) => {
+    const totalParticipants = entry.participants?.length || 0;
+    const busyProfessorIds = Array.isArray(entry.busyProfessorIds) ? entry.busyProfessorIds : [];
+    const freeProfessorIds = Array.isArray(entry.freeProfessorIds) ? entry.freeProfessorIds : [];
+    const busyNames = busyProfessorIds
+      .map((id) => getProfessorById(id)?.name || id)
+      .filter(Boolean);
+
+    let statusText = '';
+    if (!totalParticipants) {
+      statusText = 'Sem docentes vinculados';
+    } else if (entry.availability === 'available') {
+      statusText = 'Todos disponíveis';
+    } else if (entry.availability === 'busy') {
+      statusText = 'Todos ocupados';
+    } else {
+      statusText = `${freeProfessorIds.length}/${totalParticipants} livre${
+        freeProfessorIds.length === 1 ? '' : 's'
+      }`;
+    }
+
+    const tooltipParts = [];
+    if (busyNames.length) {
+      tooltipParts.push(`Ocupados: ${busyNames.join(', ')}`);
+    }
+    const conflicts = Array.isArray(entry.conflicts) ? entry.conflicts : [];
+    conflicts.forEach((message) => errorSet.add(message));
+    if (conflicts.length) {
+      tooltipParts.push(conflicts.join(' '));
+    }
+
+    const tooltip = tooltipParts.filter(Boolean).join(' • ');
+    const attributes = tooltip ? ` title="${escapeAttributeValue(tooltip)}"` : '';
+    const badge = `<span class="badge meeting-availability" data-status="${entry.availability}">${escapeHtmlText(entry.label || '')}</span>`;
+    const textSpan = `<span class="meeting-availability-text">${escapeHtmlText(statusText)}</span>`;
+    return `<span class="slot-line meeting-availability-line" data-status="${entry.availability}"${attributes}>${badge}${textSpan}</span>`;
+  });
+
+  return {
+    html: `<div class="slot-content meeting-availability-content">${lines.join('')}</div>`,
+    errors: [...errorSet]
+  };
+}
+
 function buildCellContent(assignments, view) {
   if (!assignments.length) {
     return { html: '<span class="slot-empty">Disponível</span>', errors: [] };
   }
 
-  const errorSet = new Set();
-  const escapeAttribute = (value) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+  if (view === 'meeting') {
+    const allStatusEntries = assignments.every((entry) => entry?.sourceType === 'meeting-type-status');
+    if (allStatusEntries) {
+      return buildMeetingAvailabilityCell(assignments);
+    }
+  }
 
-  const escapeHtml = (value) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+  const errorSet = new Set();
 
   const hidePeriodLine = view === 'period';
   const hideProfessorLine = view === 'professor';
@@ -3277,7 +3437,7 @@ function buildCellContent(assignments, view) {
     const lines = [];
 
     if (discipline) {
-      const disciplineText = escapeHtml(disciplineLabel);
+      const disciplineText = escapeHtmlText(disciplineLabel);
       lines.push(
         `<span class="slot-line slot-line-discipline"><span class="badge discipline">${disciplineText}</span></span>`
       );
@@ -3285,12 +3445,12 @@ function buildCellContent(assignments, view) {
 
     if (period && !hidePeriodLine) {
       lines.push(
-        `<span class="slot-line slot-line-period"><span class="badge period">${period.name}</span></span>`
+        `<span class="slot-line slot-line-period"><span class="badge period">${escapeHtmlText(period.name)}</span></span>`
       );
     }
 
     if (professor && !hideProfessorLine) {
-      let professorLine = `<span class="badge docente">${professor.name}`;
+      let professorLine = `<span class="badge docente">${escapeHtmlText(professor.name)}`;
       if (professor.isCourseArea) {
         professorLine +=
           '<span class="course-area-indicator" aria-hidden="true"></span><span class="visually-hidden">Docente da área do curso</span>';
@@ -3300,8 +3460,9 @@ function buildCellContent(assignments, view) {
     }
 
     if (room && !hideRoomLine) {
+      const roomName = escapeHtmlText(room.name);
       lines.push(
-        `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
+        `<span class="slot-line slot-line-room"><span class="badge room">Sala ${roomName}</span></span>`
       );
     }
 
@@ -3322,7 +3483,7 @@ function buildCellContent(assignments, view) {
     const attributes = [];
     if (disciplineLabel) {
       const accessibleLabel = `Disciplina: ${disciplineLabel}`;
-      const escapedLabel = escapeAttribute(accessibleLabel);
+      const escapedLabel = escapeAttributeValue(accessibleLabel);
       attributes.push(`title="${escapedLabel}"`, `aria-label="${escapedLabel}"`);
     }
 
@@ -3352,6 +3513,9 @@ function getCellAssignments(view, entityId, dayKey, slotCode) {
     return assignment ? [{ sourceType: 'class', periodId: entityId, data: assignment }] : [];
   }
   if (view === 'meeting') {
+    if (!entityId || entityId === MEETING_OVERVIEW_ID || !getMeetingById(entityId)) {
+      return getMeetingTypeStatusesForSlot(dayKey, slotCode);
+    }
     const entry = getMeetingAssignment(entityId, key);
     return entry ? [{ sourceType: 'meeting', meetingId: entityId, data: entry }] : [];
   }
@@ -3402,10 +3566,14 @@ function renderSchedule() {
   scheduleContainer.innerHTML = '';
   updateScheduleTitle();
   if (!state.selectedEntity) {
-    renderViewSummary();
-    scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
-    updateSelectionUI();
-    return;
+    if (state.view === 'meeting') {
+      state.selectedEntity = MEETING_OVERVIEW_ID;
+    } else {
+      renderViewSummary();
+      scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
+      updateSelectionUI();
+      return;
+    }
   }
 
   computeDisciplineUsage();
@@ -3467,6 +3635,15 @@ function renderSchedule() {
           delete button.dataset.disciplineIds;
         }
         button.innerHTML = cellContent.html;
+        if (state.view === 'meeting' && state.selectedEntity === MEETING_OVERVIEW_ID) {
+          const isActiveSlot =
+            state.activeMeetingSlot &&
+            state.activeMeetingSlot.dayKey === day.key &&
+            state.activeMeetingSlot.slotCode === slot.code;
+          button.classList.toggle('is-active-slot', Boolean(isActiveSlot));
+        } else {
+          button.classList.remove('is-active-slot');
+        }
         if (cellContent.errors.length) {
           button.classList.add('has-error');
           button.title = cellContent.errors.map((error) => `• ${error}`).join('\n');
@@ -3572,7 +3749,7 @@ function renderViewSummary() {
   container.innerHTML = '';
   container.classList.remove('has-content', 'is-empty');
 
-  if (!state.selectedEntity) {
+  if (!state.selectedEntity && state.view !== 'meeting') {
     container.classList.add('is-empty');
     container.appendChild(
       createSummaryPlaceholder('Selecione um item para visualizar detalhes da agenda.')
@@ -4081,108 +4258,320 @@ function buildRoomSummary(roomId) {
   return fragment;
 }
 
-function buildMeetingSummary(meetingId) {
-  const meeting = getMeetingById(meetingId);
-  if (!meeting) return null;
-
+function buildMeetingSummary(selectedId) {
+  const meeting = getMeetingById(selectedId);
   const fragment = document.createDocumentFragment();
-  const title = document.createElement('h3');
-  title.className = 'summary-title';
-  title.textContent = meeting.name;
-  fragment.appendChild(title);
 
-  const meetingType = getMeetingTypeById(meeting.meetingTypeId);
-  if (meetingType) {
-    const typeMeta = document.createElement('p');
-    typeMeta.className = 'summary-meta';
-    typeMeta.textContent = `Tipo de reunião: ${meetingType.name}`;
-    fragment.appendChild(typeMeta);
+  const slotStatusCache = new Map();
+  const getStatusesForSlot = (dayKey, slotCode) => {
+    const key = slotKey(dayKey, slotCode);
+    if (!slotStatusCache.has(key)) {
+      slotStatusCache.set(key, getMeetingTypeStatusesForSlot(dayKey, slotCode));
+    }
+    return slotStatusCache.get(key);
+  };
+
+  if (meeting) {
+    const title = document.createElement('h3');
+    title.className = 'summary-title';
+    title.textContent = meeting.name;
+    fragment.appendChild(title);
+
+    const meetingType = getMeetingTypeById(meeting.meetingTypeId);
+    if (meetingType) {
+      const typeMeta = document.createElement('p');
+      typeMeta.className = 'summary-meta';
+      typeMeta.textContent = `Tipo de reunião: ${meetingType.name}`;
+      fragment.appendChild(typeMeta);
+    }
+
+    const defaultParticipants = sanitizeProfessorIdList(meeting.professorIds || []);
+    const defaultParticipantNames = defaultParticipants
+      .map((id) => getProfessorById(id)?.name || id)
+      .filter(Boolean)
+      .map((name) => escapeHtmlText(name));
+    const participantLine = document.createElement('p');
+    participantLine.className = 'summary-line';
+    participantLine.innerHTML = `<strong>Docentes padrão:</strong> ${
+      defaultParticipantNames.length ? defaultParticipantNames.join(', ') : 'Nenhum docente vinculado'
+    }`;
+    fragment.appendChild(participantLine);
+
+    const defaultRoom = meeting.roomId ? getRoomById(meeting.roomId) : null;
+    if (defaultRoom) {
+      const roomLine = document.createElement('p');
+      roomLine.className = 'summary-line';
+      roomLine.innerHTML = `<strong>Sala padrão:</strong> ${escapeHtmlText(defaultRoom.name)}`;
+      fragment.appendChild(roomLine);
+    }
+
+    const schedule = state.meetingSchedule[meeting.id] || {};
+    const entries = Object.entries(schedule).map(([key, entry]) => {
+      const { dayKey, slotCode } = parseSlotKey(key);
+      return { key, entry, dayKey, slotCode };
+    });
+
+    if (!entries.length) {
+      fragment.appendChild(
+        createSummaryPlaceholder('Nenhum horário configurado para esta reunião.')
+      );
+    } else {
+      entries.sort(compareSlotPosition);
+      const list = document.createElement('ul');
+      list.className = 'summary-list';
+
+      entries.forEach((item) => {
+        const meetingEntry = document.createElement('li');
+        meetingEntry.className = 'summary-item';
+
+        const header = document.createElement('div');
+        header.className = 'summary-item-header';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'summary-item-title';
+        titleSpan.textContent = formatSlotLabel(item.dayKey, item.slotCode);
+        header.appendChild(titleSpan);
+
+        const participants = getEffectiveMeetingParticipants(meeting, item.entry);
+        const status = document.createElement('span');
+        status.className = 'summary-status';
+        status.dataset.status = 'info';
+        status.textContent = `${participants.length} docente${participants.length === 1 ? '' : 's'}`;
+        header.appendChild(status);
+
+        meetingEntry.appendChild(header);
+
+        const details = document.createElement('div');
+        details.className = 'summary-item-details';
+
+        const participantNames = participants
+          .map((id) => getProfessorById(id)?.name || id)
+          .filter(Boolean)
+          .map((name) => escapeHtmlText(name));
+        const participantDetail = document.createElement('p');
+        participantDetail.className = 'summary-line';
+        participantDetail.innerHTML = `<strong>Docentes:</strong> ${
+          participantNames.length ? participantNames.join(', ') : 'Nenhum docente definido'
+        }`;
+        details.appendChild(participantDetail);
+
+        const resolvedRoomId = getEffectiveMeetingRoom(meeting, item.entry);
+        const resolvedRoom = resolvedRoomId ? getRoomById(resolvedRoomId) : null;
+        const roomLine = document.createElement('p');
+        roomLine.className = 'summary-line';
+        roomLine.innerHTML = `<strong>Sala:</strong> ${
+          resolvedRoom
+            ? escapeHtmlText(resolvedRoom.name)
+            : resolvedRoomId
+            ? `Sala ${escapeHtmlText(resolvedRoomId)}`
+            : 'Não definida'
+        }`;
+        details.appendChild(roomLine);
+
+        meetingEntry.appendChild(details);
+        list.appendChild(meetingEntry);
+      });
+
+      fragment.appendChild(createSummaryCollapsible('Horários cadastrados', list, { startOpen: true }));
+    }
+  } else {
+    const title = document.createElement('h3');
+    title.className = 'summary-title';
+    title.textContent = 'Disponibilidade dos comitês';
+    fragment.appendChild(title);
   }
 
-  const defaultParticipants = sanitizeProfessorIdList(meeting.professorIds || []);
-  const defaultParticipantNames = defaultParticipants
-    .map((id) => getProfessorById(id)?.name || id)
-    .filter(Boolean);
-  const participantLine = document.createElement('p');
-  participantLine.className = 'summary-line';
-  participantLine.innerHTML = `<strong>Docentes padrão:</strong> ${
-    defaultParticipantNames.length ? defaultParticipantNames.join(', ') : 'Nenhum docente vinculado'
-  }`;
-  fragment.appendChild(participantLine);
+  const activeSlot = state.activeMeetingSlot;
+  if (activeSlot) {
+    const statuses = getStatusesForSlot(activeSlot.dayKey, activeSlot.slotCode);
+    const slotList = document.createElement('ul');
+    slotList.className = 'summary-list';
 
-  const defaultRoom = meeting.roomId ? getRoomById(meeting.roomId) : null;
-  if (defaultRoom) {
-    const roomLine = document.createElement('p');
-    roomLine.className = 'summary-line';
-    roomLine.innerHTML = `<strong>Sala padrão:</strong> ${defaultRoom.name}`;
-    fragment.appendChild(roomLine);
-  }
+    statuses.forEach((status) => {
+      const item = document.createElement('li');
+      item.className = 'summary-item';
 
-  const schedule = state.meetingSchedule[meetingId] || {};
-  const entries = Object.entries(schedule).map(([key, entry]) => {
-    const { dayKey, slotCode } = parseSlotKey(key);
-    return { key, entry, dayKey, slotCode };
-  });
+      const header = document.createElement('div');
+      header.className = 'summary-item-header';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'summary-item-title';
+      titleSpan.textContent = status.label;
+      header.appendChild(titleSpan);
 
-  if (!entries.length) {
+      const indicator = document.createElement('span');
+      indicator.className = 'summary-status';
+      if (!status.participants.length) {
+        indicator.dataset.status = 'info';
+        indicator.textContent = 'Sem docentes';
+      } else if (status.availability === 'available') {
+        indicator.dataset.status = 'success';
+        indicator.textContent = 'Todos disponíveis';
+      } else if (status.availability === 'busy') {
+        indicator.dataset.status = 'danger';
+        indicator.textContent = 'Todos ocupados';
+      } else {
+        indicator.dataset.status = 'warning';
+        indicator.textContent = 'Disponibilidade parcial';
+      }
+      header.appendChild(indicator);
+
+      item.appendChild(header);
+
+      const details = document.createElement('div');
+      details.className = 'summary-item-details';
+      const participantNames = status.participants
+        .map((id) => getProfessorById(id)?.name || id)
+        .filter(Boolean)
+        .map((name) => escapeHtmlText(name));
+      const busyNames = (status.busyProfessorIds || [])
+        .map((id) => getProfessorById(id)?.name || id)
+        .filter(Boolean)
+        .map((name) => escapeHtmlText(name));
+      const freeNames = (status.freeProfessorIds || [])
+        .map((id) => getProfessorById(id)?.name || id)
+        .filter(Boolean)
+        .map((name) => escapeHtmlText(name));
+
+      const participantsLine = document.createElement('p');
+      participantsLine.className = 'summary-line';
+      participantsLine.innerHTML = `<strong>Docentes do comitê:</strong> ${
+        participantNames.length ? participantNames.join(', ') : 'Nenhum cadastrado'
+      }`;
+      details.appendChild(participantsLine);
+
+      if (freeNames.length && busyNames.length) {
+        const freeLine = document.createElement('p');
+        freeLine.className = 'summary-line';
+        freeLine.innerHTML = `<strong>Disponíveis:</strong> ${freeNames.join(', ')}`;
+        details.appendChild(freeLine);
+      }
+
+      if (busyNames.length) {
+        const busyLine = document.createElement('p');
+        busyLine.className = 'summary-line';
+        busyLine.innerHTML = `<strong>Indisponíveis:</strong> ${busyNames.join(', ')}`;
+        details.appendChild(busyLine);
+      }
+
+      const conflicts = Array.isArray(status.conflicts) ? status.conflicts : [];
+      if (conflicts.length) {
+        const conflictLine = document.createElement('p');
+        conflictLine.className = 'summary-line';
+        const formatted = conflicts.map((message) => escapeHtmlText(message)).join('<br />');
+        conflictLine.innerHTML = `<strong>Conflitos:</strong> ${formatted}`;
+        details.appendChild(conflictLine);
+      }
+
+      item.appendChild(details);
+      slotList.appendChild(item);
+    });
+
+    const slotLabel = formatCompactSlotLabel(activeSlot.dayKey, activeSlot.slotCode);
     fragment.appendChild(
-      createSummaryPlaceholder('Nenhum horário configurado para esta reunião.')
+      createSummaryCollapsible(`Disponibilidade em ${slotLabel}`, slotList, { startOpen: true })
     );
-    return fragment;
+  } else {
+    fragment.appendChild(
+      createSummaryPlaceholder('Selecione um horário na grade para ver a disponibilidade dos comitês.')
+    );
   }
 
-  entries.sort(compareSlotPosition);
+  const overviewList = document.createElement('ul');
+  overviewList.className = 'summary-list';
 
-  const list = document.createElement('ul');
-  list.className = 'summary-list';
+  MEETING_TYPES.forEach((type) => {
+    const participants = getProfessorsForMeetingType(type.id);
+    const participantNames = participants
+      .map((id) => getProfessorById(id)?.name || id)
+      .filter(Boolean)
+      .map((name) => escapeHtmlText(name));
 
-  entries.forEach((item) => {
-    const meetingEntry = document.createElement('li');
-    meetingEntry.className = 'summary-item';
+    const availableSlots = [];
+    const partialSlots = [];
+
+    days.forEach((day) => {
+      sessions.forEach((session) => {
+        session.slots.forEach((slot) => {
+          const status = getStatusesForSlot(day.key, slot.code).find(
+            (entry) => entry.meetingTypeId === type.id
+          );
+          if (!status || !status.participants.length) return;
+          if (status.availability === 'available') {
+            availableSlots.push(formatCompactSlotLabel(day.key, slot.code));
+          } else if (status.availability === 'partial') {
+            const freeCount = status.freeProfessorIds?.length || 0;
+            partialSlots.push(
+              `${formatCompactSlotLabel(day.key, slot.code)} (${freeCount}/${status.participants.length})`
+            );
+          }
+        });
+      });
+    });
+
+    const item = document.createElement('li');
+    item.className = 'summary-item';
 
     const header = document.createElement('div');
     header.className = 'summary-item-header';
     const titleSpan = document.createElement('span');
     titleSpan.className = 'summary-item-title';
-    titleSpan.textContent = formatSlotLabel(item.dayKey, item.slotCode);
+    titleSpan.textContent = type.name;
     header.appendChild(titleSpan);
 
-    const participants = getEffectiveMeetingParticipants(meeting, item.entry);
-    const status = document.createElement('span');
-    status.className = 'summary-status';
-    status.dataset.status = 'info';
-    status.textContent = `${participants.length} docente${participants.length === 1 ? '' : 's'}`;
-    header.appendChild(status);
+    const statusIndicator = document.createElement('span');
+    statusIndicator.className = 'summary-status';
+    if (!participants.length) {
+      statusIndicator.dataset.status = 'info';
+      statusIndicator.textContent = 'Sem docentes';
+    } else if (availableSlots.length) {
+      statusIndicator.dataset.status = 'success';
+      statusIndicator.textContent = `${availableSlots.length} horário${
+        availableSlots.length === 1 ? '' : 's'
+      } livre${availableSlots.length === 1 ? '' : 's'}`;
+    } else if (partialSlots.length) {
+      statusIndicator.dataset.status = 'warning';
+      statusIndicator.textContent = 'Disponibilidade parcial';
+    } else {
+      statusIndicator.dataset.status = 'danger';
+      statusIndicator.textContent = 'Sem horários livres';
+    }
+    header.appendChild(statusIndicator);
 
-    meetingEntry.appendChild(header);
+    item.appendChild(header);
 
     const details = document.createElement('div');
     details.className = 'summary-item-details';
 
-    const participantNames = participants
-      .map((id) => getProfessorById(id)?.name || id)
-      .filter(Boolean);
     const participantLine = document.createElement('p');
     participantLine.className = 'summary-line';
     participantLine.innerHTML = `<strong>Docentes:</strong> ${
-      participantNames.length ? participantNames.join(', ') : 'Nenhum docente definido'
+      participantNames.length ? participantNames.join(', ') : 'Nenhum cadastrado'
     }`;
     details.appendChild(participantLine);
 
-    const resolvedRoomId = getEffectiveMeetingRoom(meeting, item.entry);
-    const resolvedRoom = resolvedRoomId ? getRoomById(resolvedRoomId) : null;
-    const roomLine = document.createElement('p');
-    roomLine.className = 'summary-line';
-    roomLine.innerHTML = `<strong>Sala:</strong> ${
-      resolvedRoom ? resolvedRoom.name : resolvedRoomId ? `Sala ${resolvedRoomId}` : 'Não definida'
+    const availableLine = document.createElement('p');
+    availableLine.className = 'summary-line';
+    availableLine.innerHTML = `<strong>Horários livres:</strong> ${
+      availableSlots.length ? availableSlots.join(', ') : 'Nenhum com todos os docentes'
     }`;
-    details.appendChild(roomLine);
+    details.appendChild(availableLine);
 
-    meetingEntry.appendChild(details);
-    list.appendChild(meetingEntry);
+    if (partialSlots.length) {
+      const partialLine = document.createElement('p');
+      partialLine.className = 'summary-line';
+      partialLine.innerHTML = `<strong>Disponibilidade parcial:</strong> ${partialSlots.join(', ')}`;
+      details.appendChild(partialLine);
+    }
+
+    item.appendChild(details);
+    overviewList.appendChild(item);
   });
 
-  fragment.appendChild(list);
+  fragment.appendChild(
+    createSummaryCollapsible('Visão geral dos comitês', overviewList, {
+      startOpen: !state.activeMeetingSlot
+    })
+  );
+
   return fragment;
 }
 
@@ -4192,6 +4581,17 @@ function openAssignmentModalForSlots(slotsInput) {
     return;
   }
   if (state.view === 'meeting') {
+    const meeting = getMeetingById(state.selectedEntity);
+    if (!meeting || state.selectedEntity === MEETING_OVERVIEW_ID) {
+      const slots = Array.isArray(slotsInput) ? slotsInput : [];
+      if (slots.length) {
+        const first = slots[0];
+        state.activeMeetingSlot = { dayKey: first.dayKey, slotCode: first.slotCode };
+        renderSchedule();
+        renderViewSummary();
+      }
+      return;
+    }
     openMeetingAssignmentModal(Array.isArray(slotsInput) ? slotsInput : []);
     return;
   }
