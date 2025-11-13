@@ -7,8 +7,17 @@ set -e
 
 echo "Iniciando configuração do servidor Mapa de Horários..."
 
+# Este script deve ser executado pelo mesmo usuário que rodará o serviço systemd
+# (conforme definido em User=). Utilize sudo apenas quando necessário para ações
+# administrativas, garantindo que o usuário final permaneça como proprietário dos arquivos.
+
 # Caminho base = pasta onde o script está localizado
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+SERVICE_USER="$(whoami)"
+SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+# Permissões padrão do diretório de dados. Ajuste para 770 antes de executar o script
+# caso outro grupo específico precise de acesso de escrita.
+DATA_DIR_PERMISSIONS="${DATA_DIR_PERMISSIONS:-750}"
 
 # --- Verificar se Node.js está instalado ---
 if ! command -v node >/dev/null 2>&1; then
@@ -32,7 +41,9 @@ fi
 # --- Criar pasta de dados ---
 echo "Verificando diretório de dados..."
 mkdir -p "$BASE_DIR/data"
-sudo chmod -R 777 "$BASE_DIR/data"
+sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$BASE_DIR/data"
+sudo find "$BASE_DIR/data" -type d -exec chmod "$DATA_DIR_PERMISSIONS" {} +
+sudo find "$BASE_DIR/data" -type f -exec chmod 640 {} + 2>/dev/null || true
 
 # --- Instalar dependências Node ---
 echo "Instalando dependências..."
