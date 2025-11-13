@@ -267,8 +267,11 @@ async function serveStatic(req, res, pathname) {
     return;
   }
 
-  const safePath = path.normalize(path.join(PUBLIC_DIR, pathname === '/' ? '/index.html' : pathname));
-  if (!safePath.startsWith(PUBLIC_DIR)) {
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/g, '');
+  const safePath = path.normalize(path.join(PUBLIC_DIR, relative));
+  const isInsidePublic =
+    safePath === PUBLIC_DIR || safePath.startsWith(`${PUBLIC_DIR}${path.sep}`);
+  if (!isInsidePublic) {
     sendJson(res, 403, { message: 'Acesso negado.' });
     return;
   }
