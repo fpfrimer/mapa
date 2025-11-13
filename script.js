@@ -957,9 +957,7 @@ class SearchableDropdown {
     const previous = this.select.value;
     this.select.value = value || '';
     this.refreshInputDisplay();
-    if (previous !== value) {
-      this.select.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
+    if (previous !== this.select.value) {
       this.select.dispatchEvent(new Event('change', { bubbles: true }));
     }
     this.close();
