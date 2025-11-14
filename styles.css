@@ -664,10 +664,6 @@ body.theme-dark .menu-divider {
   background: rgba(148, 163, 184, 0.35);
 }
 
-body.theme-dark .top-bar__section--selection {
-  background: rgba(255, 255, 255, 0.16);
-}
-
 @media (max-width: 1100px) {
   main {
     grid-template-columns: 1fr;
@@ -1216,17 +1212,16 @@ button.primary:hover {
 
 .top-bar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.top-bar__intro {
+.top-bar__primary {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .project-toolbar {
@@ -1238,19 +1233,6 @@ button.primary:hover {
 .project-toolbar .icon-button {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
-}
-
-.top-bar__titles {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.top-bar__title {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
 }
 
 .top-bar__project-name {
@@ -1306,13 +1288,18 @@ button.primary:hover {
   outline-offset: 2px;
 }
 
+.top-bar__project {
+  flex: 1 1 240px;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+}
+
 .top-bar__controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem 1rem;
-  flex: 1;
-  min-width: 0;
   width: 100%;
 }
 
@@ -1323,20 +1310,19 @@ button.primary:hover {
   min-width: 0;
 }
 
-.top-bar__section--selection {
-  flex: 1 1 auto;
+.top-bar__selection {
+  flex: 1 1 320px;
+  min-width: clamp(260px, 45vw, 480px);
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.6rem;
-  min-width: clamp(240px, 40vw, 420px);
-}
-
-.top-bar__section--selection .selection-actions {
-  margin-left: auto;
 }
 
 .top-bar__divider {
   align-self: stretch;
   width: 1px;
+  height: 2.5rem;
   background: rgba(255, 255, 255, 0.25);
 }
 
@@ -1448,10 +1434,10 @@ body.theme-dark .top-bar__icon-button.is-active {
   color: var(--text);
 }
 
-.selection-summary {
+#selection-summary {
   flex: 1 1 auto;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.88);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1463,6 +1449,10 @@ body.theme-dark .top-bar__icon-button.is-active {
 }
 
 @media (max-width: 900px) {
+  .top-bar__primary {
+    gap: 0.5rem;
+  }
+
   .top-bar__controls {
     flex-direction: column;
     align-items: stretch;
@@ -1473,24 +1463,37 @@ body.theme-dark .top-bar__icon-button.is-active {
     min-width: 0;
   }
 
-  .top-bar__section--selection {
+  .top-bar__selection {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
   }
 
-  .selection-summary {
+  #selection-summary {
     width: 100%;
+    white-space: normal;
+  }
+
+  .selection-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .top-bar__divider {
-    display: none;
+    width: 100%;
+    height: 1px;
+    margin: 0.15rem 0;
   }
 }
 
 @media (max-width: 640px) {
-  .top-bar__title {
-    font-size: 1.25rem;
+  .top-bar__primary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar__project {
+    min-width: 0;
   }
 
   .control-select {
@@ -2679,15 +2682,18 @@ body.theme-dark .project-summary div {
     gap: 0.5rem;
   }
 
-  .top-bar__section--selection {
+  .top-bar__selection {
     width: 100%;
     flex-wrap: wrap;
     padding: 0.65rem 0.75rem;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
   }
 
   .selection-actions {
     width: 100%;
     justify-content: space-between;
+    gap: 0.5rem;
   }
 
   .selection-actions button {
