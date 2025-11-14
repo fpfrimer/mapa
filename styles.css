@@ -9,6 +9,9 @@
   --success: #2e7d32;
   --text: #1f2d3d;
   --muted: #607d8b;
+  --project-hub-header-bg: rgba(255, 255, 255, 0.85);
+  --project-hub-header-border: rgba(15, 23, 42, 0.08);
+  --project-hub-eyebrow: #0a1c3d;
   --manha: #fff3cd;
   --tarde: #ffe0b2;
   --noite: #d1ecf1;
@@ -30,6 +33,9 @@ body.theme-dark {
   --success: #34d399;
   --text: #e2e8f0;
   --muted: #94a3b8;
+  --project-hub-header-bg: rgba(2, 6, 23, 0.65);
+  --project-hub-header-border: rgba(148, 163, 184, 0.32);
+  --project-hub-eyebrow: #e8edfb;
   --manha: rgba(59, 130, 246, 0.18);
   --tarde: rgba(249, 115, 22, 0.18);
   --noite: rgba(14, 165, 233, 0.2);
@@ -179,8 +185,22 @@ body.theme-dark .project-hub__card--hero {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
+  align-items: center;
   gap: 1.5rem;
   margin-bottom: 2rem;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  border-radius: clamp(1rem, 2.5vw, 1.5rem);
+  background: var(--project-hub-header-bg);
+  border: 1px solid var(--project-hub-header-border);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.project-hub__card--hero .project-hub__header {
+  background: rgba(8, 20, 56, 0.75);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 25px 70px rgba(3, 8, 35, 0.55);
 }
 
 .project-hub__card--hero .project-hub__eyebrow {
@@ -189,11 +209,11 @@ body.theme-dark .project-hub__card--hero {
 
 .project-hub__eyebrow {
   margin: 0;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  font-weight: 600;
+  font-size: clamp(1.9rem, 3.5vw, 2.6rem);
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
-  color: var(--text);
+  color: var(--project-hub-eyebrow);
 }
 
 .project-hub__actions {
