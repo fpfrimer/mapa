@@ -134,6 +134,7 @@ body.theme-dark .project-hub__card {
   color: #f8fbff;
   border: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow: 0 35px 90px rgba(15, 23, 42, 0.3);
+  border-radius: 30px;
 }
 
 .project-hub__card--hero::before,
