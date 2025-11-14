@@ -1295,12 +1295,13 @@ button.primary:hover {
   align-items: center;
 }
 
-.top-bar__controls {
+.top-bar__filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem 1rem;
-  width: 100%;
+  flex: 2 1 clamp(320px, 45vw, 560px);
+  min-width: clamp(260px, 40vw, 520px);
 }
 
 .top-bar__section {
@@ -1308,6 +1309,10 @@ button.primary:hover {
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
+}
+
+.top-bar__filters .top-bar__section {
+  flex: 1 1 220px;
 }
 
 .top-bar__selection {
@@ -1461,14 +1466,15 @@ body.theme-dark .top-bar__icon-button.is-active {
     gap: 0.5rem;
   }
 
-  .top-bar__controls {
+  .top-bar__filters {
+    width: 100%;
+    min-width: 0;
     flex-direction: column;
     align-items: stretch;
   }
 
-  .top-bar__section {
+  .top-bar__filters .top-bar__section {
     width: 100%;
-    min-width: 0;
   }
 
   .top-bar__selection {
