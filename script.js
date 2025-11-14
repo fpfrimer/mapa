@@ -55,6 +55,13 @@ const projectTitleEditingState = {
   previousName: ''
 };
 
+const authState = {
+  token: null,
+  user: null,
+  expiresAt: null,
+  isAuthenticated: false
+};
+
 const disciplineColorPalette = [
   '#f94144',
   '#f3722c',
@@ -323,6 +330,9 @@ function updateDisciplineColorSuggestion(options = {}) {
 const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
 const CONFIG_API_URL = '/api/configurations';
+const LOGIN_API_URL = '/api/login';
+const LOGOUT_API_URL = '/api/logout';
+const AUTH_STORAGE_KEY = 'planner.auth';
 const CURRENT_PROJECT_KEY = 'planner.currentProject';
 
 const professorFormDisciplineIds = new Set();
@@ -595,8 +605,295 @@ const elements = {
   panelExportProjectButton: document.getElementById('panel-export-project'),
   panelOpenHubButton: document.getElementById('panel-open-hub'),
   panelResetProjectButton: document.getElementById('panel-reset-project'),
-  darkModeToggle: document.getElementById('dark-mode-toggle')
+  darkModeToggle: document.getElementById('dark-mode-toggle'),
+  sessionIndicator: document.getElementById('session-indicator'),
+  sessionStatusText: document.getElementById('session-status-text'),
+  sessionLoginButton: document.getElementById('session-login-button'),
+  sessionLogoutButton: document.getElementById('session-logout-button'),
+  loginModal: document.getElementById('login-modal'),
+  loginForm: document.getElementById('login-form'),
+  loginCloseButton: document.getElementById('login-modal-close'),
+  loginFeedback: document.getElementById('login-feedback'),
+  loginUsernameInput: document.getElementById('login-username'),
+  loginPasswordInput: document.getElementById('login-password')
 };
+
+function normalizeExpiresAt(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function hasValidAuthToken(token, expiresAt) {
+  if (!token) {
+    return false;
+  }
+  if (typeof expiresAt === 'number') {
+    return expiresAt > Date.now();
+  }
+  return true;
+}
+
+function persistAuthState() {
+  try {
+    if (authState.isAuthenticated && authState.token) {
+      const payload = {
+        token: authState.token,
+        user: authState.user,
+        expiresAt: authState.expiresAt
+      };
+      sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
+    } else {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.error('Erro ao persistir o estado de autenticação.', error);
+  }
+}
+
+function toggleFormDisabled(form, disabled) {
+  if (!form) return;
+  const controls = form.elements ? Array.from(form.elements) : [];
+  controls.forEach((control) => {
+    if (control && typeof control.disabled !== 'undefined') {
+      control.disabled = disabled;
+    }
+  });
+  form.classList.toggle('is-locked', disabled);
+}
+
+function updateEditingAvailability(canEdit) {
+  const forms = [
+    elements.periodForm,
+    elements.professorForm,
+    elements.roomForm,
+    elements.disciplineForm,
+    elements.assignmentForm,
+    elements.configSaveForm
+  ];
+  forms.forEach((form) => toggleFormDisabled(form, !canEdit));
+  if (!canEdit) {
+    clearSelectedSlots();
+    if (typeof closeModal === 'function') {
+      closeModal();
+    }
+  }
+}
+
+function applyAuthStateToUi() {
+  const canEdit = authState.isAuthenticated;
+  if (elements.sessionStatusText) {
+    elements.sessionStatusText.textContent = canEdit && authState.user?.username
+      ? `Sessão: ${authState.user.username}`
+      : 'Sessão: visitante';
+  }
+  if (elements.sessionLoginButton) {
+    elements.sessionLoginButton.hidden = canEdit;
+  }
+  if (elements.sessionLogoutButton) {
+    elements.sessionLogoutButton.hidden = !canEdit;
+  }
+  if (document.body) {
+    document.body.classList.toggle('auth-locked', !canEdit);
+  }
+  updateEditingAvailability(canEdit);
+  updateProjectChrome();
+  updateSelectionUI();
+}
+
+function restoreAuthStateFromStorage() {
+  try {
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      authState.token = null;
+      authState.user = null;
+      authState.expiresAt = null;
+      authState.isAuthenticated = false;
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    const expiresAt = normalizeExpiresAt(parsed.expiresAt);
+    const isValid = hasValidAuthToken(parsed.token, expiresAt);
+    if (!isValid) {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+      authState.token = null;
+      authState.user = null;
+      authState.expiresAt = null;
+      authState.isAuthenticated = false;
+      return;
+    }
+    authState.token = parsed.token;
+    authState.user = parsed.user || null;
+    authState.expiresAt = expiresAt;
+    authState.isAuthenticated = true;
+  } catch (error) {
+    console.error('Erro ao restaurar o token armazenado.', error);
+    authState.token = null;
+    authState.user = null;
+    authState.expiresAt = null;
+    authState.isAuthenticated = false;
+  }
+}
+
+function clearAuthState(options = {}) {
+  const { notify = false } = options;
+  const wasAuthenticated = authState.isAuthenticated;
+  authState.token = null;
+  authState.user = null;
+  authState.expiresAt = null;
+  authState.isAuthenticated = false;
+  persistAuthState();
+  applyAuthStateToUi();
+  if (notify && wasAuthenticated) {
+    setStorageFeedback('Sessão encerrada. Faça login novamente para editar.', 'warning');
+  }
+}
+
+function ensureAuthForEditing(message = 'Faça login para editar o cronograma.') {
+  if (authState.isAuthenticated) {
+    return true;
+  }
+  setStorageFeedback(message, 'warning');
+  if (elements.sessionLoginButton && !elements.sessionLoginButton.hidden) {
+    elements.sessionLoginButton.focus();
+  }
+  return false;
+}
+
+function handleServerAuthError(status) {
+  if (status !== 401 && status !== 403) {
+    return;
+  }
+  const wasAuthenticated = authState.isAuthenticated;
+  clearAuthState({ notify: false });
+  if (wasAuthenticated) {
+    setStorageFeedback('Sessão expirada. Faça login novamente para continuar.', 'warning');
+  }
+}
+
+function setLoginFeedback(message, variant = 'info') {
+  if (!elements.loginFeedback) return;
+  elements.loginFeedback.textContent = message || '';
+  elements.loginFeedback.dataset.variant = variant;
+  elements.loginFeedback.hidden = !message;
+}
+
+function clearLoginFeedback() {
+  setLoginFeedback('');
+}
+
+function openLoginModal() {
+  if (!elements.loginModal) return;
+  clearLoginFeedback();
+  elements.loginModal.hidden = false;
+  elements.loginModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('login-modal-open');
+  requestAnimationFrame(() => {
+    elements.loginUsernameInput?.focus();
+  });
+}
+
+function closeLoginModal() {
+  if (!elements.loginModal) return;
+  elements.loginModal.hidden = true;
+  elements.loginModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('login-modal-open');
+  if (elements.loginForm) {
+    elements.loginForm.reset();
+  }
+  clearLoginFeedback();
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  if (!elements.loginForm) return;
+  const username = elements.loginUsernameInput?.value.trim() || '';
+  const password = elements.loginPasswordInput?.value || '';
+  if (!username || !password) {
+    setLoginFeedback('Informe usuário e senha.', 'error');
+    return;
+  }
+  setLoginFeedback('Validando credenciais...', 'info');
+  try {
+    const response = await fetch(LOGIN_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMessage = data?.message || 'Não foi possível realizar o login.';
+      setLoginFeedback(errorMessage, 'error');
+      return;
+    }
+    authState.token = data?.token || '';
+    authState.user = data?.user || { username };
+    authState.expiresAt = normalizeExpiresAt(data?.expiresAt) || Date.now() + 60 * 60 * 1000;
+    authState.isAuthenticated = hasValidAuthToken(authState.token, authState.expiresAt);
+    persistAuthState();
+    applyAuthStateToUi();
+    closeLoginModal();
+    setStorageFeedback('Sessão autenticada com sucesso.', 'success');
+  } catch (error) {
+    console.error('Erro ao efetuar login.', error);
+    setLoginFeedback('Não foi possível realizar o login. Tente novamente.', 'error');
+  }
+}
+
+async function performLogout() {
+  try {
+    const headers = { Accept: 'application/json' };
+    if (authState.token) {
+      headers.Authorization = `Bearer ${authState.token}`;
+    }
+    await fetch(LOGOUT_API_URL, {
+      method: 'POST',
+      headers
+    });
+  } catch (error) {
+    console.error('Erro ao encerrar sessão.', error);
+  } finally {
+    clearAuthState({ notify: true });
+  }
+}
+
+function setupAuthControls() {
+  restoreAuthStateFromStorage();
+  applyAuthStateToUi();
+  if (elements.sessionLoginButton) {
+    elements.sessionLoginButton.addEventListener('click', openLoginModal);
+  }
+  if (elements.sessionLogoutButton) {
+    elements.sessionLogoutButton.addEventListener('click', performLogout);
+  }
+  if (elements.loginCloseButton) {
+    elements.loginCloseButton.addEventListener('click', closeLoginModal);
+  }
+  if (elements.loginModal) {
+    elements.loginModal.addEventListener('click', (event) => {
+      if (event.target === elements.loginModal || event.target?.hasAttribute('data-login-dismiss')) {
+        closeLoginModal();
+      }
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && elements.loginModal && !elements.loginModal.hidden) {
+      closeLoginModal();
+    }
+  });
+  if (elements.loginForm) {
+    elements.loginForm.addEventListener('submit', handleLoginSubmit);
+  }
+}
+
+function isEditingLocked() {
+  return !authState.isAuthenticated;
+}
 
 function clearRelatedHighlights() {
   const { scheduleContainer } = elements;
@@ -2179,6 +2476,10 @@ function getSelectionDescription(count) {
 
 function updateSelectionUI() {
   const { toggleMultiSelect, selectionCount, editSelection, clearSelection } = elements;
+  const editingLocked = isEditingLocked();
+  if (editingLocked && state.multiSelectMode) {
+    state.multiSelectMode = false;
+  }
   if (toggleMultiSelect) {
     const toggleLabel = state.multiSelectMode
       ? 'Desativar seleção múltipla'
@@ -2187,12 +2488,13 @@ function updateSelectionUI() {
     toggleMultiSelect.setAttribute('aria-label', toggleLabel);
     toggleMultiSelect.setAttribute('title', toggleLabel);
     toggleMultiSelect.classList.toggle('is-active', state.multiSelectMode);
+    toggleMultiSelect.disabled = editingLocked;
     const hiddenToggleLabel = toggleMultiSelect.querySelector('.visually-hidden');
     if (hiddenToggleLabel) {
       hiddenToggleLabel.textContent = toggleLabel;
     }
   }
-  const count = state.selectedSlots.size;
+  const count = editingLocked ? 0 : state.selectedSlots.size;
   if (selectionCount) {
     selectionCount.textContent = count;
     const description = getSelectionDescription(count);
@@ -2202,7 +2504,7 @@ function updateSelectionUI() {
     selectionCount.setAttribute('aria-label', label);
   }
   if (editSelection) {
-    editSelection.disabled = !count;
+    editSelection.disabled = editingLocked || !count;
     editSelection.setAttribute('aria-label', 'Editar seleção');
     editSelection.setAttribute(
       'title',
@@ -2211,7 +2513,7 @@ function updateSelectionUI() {
     editSelection.setAttribute('aria-disabled', editSelection.disabled ? 'true' : 'false');
   }
   if (clearSelection) {
-    clearSelection.disabled = !count;
+    clearSelection.disabled = editingLocked || !count;
     clearSelection.setAttribute('aria-label', 'Limpar seleção');
     clearSelection.setAttribute(
       'title',
@@ -2231,6 +2533,10 @@ function clearSelectedSlots(options = {}) {
 }
 
 function toggleSlotSelection(dayKey, slotCode, button) {
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   const key = slotKey(dayKey, slotCode);
   if (state.selectedSlots.has(key)) {
     state.selectedSlots.delete(key);
@@ -2256,6 +2562,10 @@ function handleSlotClick(button, dayKey, slotCode) {
   if (activeSlotDrag) {
     return;
   }
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   if (state.multiSelectMode) {
     toggleSlotSelection(dayKey, slotCode, button);
     return;
@@ -2274,6 +2584,7 @@ function detachSlotPointerHandlers(button) {
 function onSlotPointerDown(event, button, dayKey, slotCode) {
   if (!button || typeof event?.button !== 'number') return;
   if (event.button !== 0) return;
+  if (isEditingLocked()) return;
   if (!state.selectedEntity) return;
   if (state.multiSelectMode || state.selectedSlots.size) return;
   if (activeSlotDrag || pendingSlotDrag) return;
@@ -2760,6 +3071,7 @@ function renderSchedule() {
   }
 
   computeDisciplineUsage();
+  const editingLocked = isEditingLocked();
 
   const table = document.createElement('table');
   table.className = 'schedule-table';
@@ -2824,11 +3136,12 @@ function renderSchedule() {
           button.classList.remove('has-error');
           button.removeAttribute('title');
         }
-        if (draggableInfo) {
+        if (draggableInfo && !editingLocked) {
           button.classList.add('is-draggable');
         } else {
           button.classList.remove('is-draggable');
         }
+        button.classList.toggle('slot-cell--locked', editingLocked);
         if (state.selectedSlots.has(key)) {
           button.classList.add('selected');
           button.setAttribute('aria-pressed', 'true');
@@ -3305,6 +3618,10 @@ function buildRoomSummary(roomId) {
 }
 
 function openAssignmentModalForSlots(slotsInput) {
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   if (!state.selectedEntity) {
     alert('Selecione um item para editar o horário.');
     return;
@@ -3489,6 +3806,10 @@ if (elements.suggestions) {
 
 elements.assignmentForm.addEventListener('submit', (event) => {
   event.preventDefault();
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
 
   const details = state.assignmentEditing.details;
@@ -3557,6 +3878,10 @@ elements.assignmentForm.addEventListener('submit', (event) => {
 });
 
 elements.removeAssignment.addEventListener('click', () => {
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   if (!state.assignmentEditing || !Array.isArray(state.assignmentEditing.details)) return;
   const details = state.assignmentEditing.details;
   if (!details.length) return;
@@ -3771,6 +4096,10 @@ function updateSuggestions() {
 }
 
 function handleSuggestionAction(action) {
+  if (isEditingLocked()) {
+    ensureAuthForEditing();
+    return;
+  }
   if (action !== 'link-professor') return;
   if (!state.assignmentEditing) return;
   const disciplineId = elements.assignmentDiscipline.value;
@@ -4068,10 +4397,11 @@ function updateProjectChrome() {
     elements.projectBackButton.disabled = document.body.classList.contains('hub-visible') || !currentProject;
   }
   if (elements.projectSaveButton) {
-    elements.projectSaveButton.disabled = !workspaceVisible || !currentProject;
+    elements.projectSaveButton.disabled =
+      !workspaceVisible || !currentProject || !authState.isAuthenticated;
   }
   if (elements.panelSaveProjectButton) {
-    elements.panelSaveProjectButton.disabled = !currentProject;
+    elements.panelSaveProjectButton.disabled = !currentProject || !authState.isAuthenticated;
   }
   if (elements.panelExportProjectButton) {
     elements.panelExportProjectButton.disabled = !currentProject;
@@ -4355,6 +4685,9 @@ async function sendConfigurationRequest(method, suffix = '', body = null) {
       Accept: 'application/json'
     }
   };
+  if (authState.token && authState.isAuthenticated) {
+    options.headers.Authorization = `Bearer ${authState.token}`;
+  }
   if (body) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
@@ -4362,6 +4695,7 @@ async function sendConfigurationRequest(method, suffix = '', body = null) {
 
   const response = await fetch(url, options);
   if (!response.ok) {
+    handleServerAuthError(response.status);
     const message = await response.text().catch(() => '');
     const error = new Error(message || `Falha na requisição: ${response.status}`);
     error.status = response.status;
@@ -5010,6 +5344,9 @@ function handleProjectHubImport(event) {
 
 async function handleQuickSave(options = {}) {
   const { notify = true } = options;
+  if (!ensureAuthForEditing()) {
+    return 'cancelled';
+  }
   if (!currentProject) {
     const storedMeta = loadStoredProjectMetadata();
     if (storedMeta) {
@@ -5065,6 +5402,9 @@ async function handleQuickSave(options = {}) {
 
 async function upsertSavedConfiguration(name, configuration, options = {}) {
   const { skipConfirmation = false, notify = true } = options;
+  if (!ensureAuthForEditing()) {
+    return 'cancelled';
+  }
   const trimmedName = (name || '').trim();
   if (!trimmedName) {
     if (notify) {
@@ -5165,6 +5505,7 @@ async function handleSavedConfigurationsClick(event) {
   }
 
   if (action === 'delete') {
+    if (!ensureAuthForEditing()) return;
     const confirmed = confirm(`Deseja remover a configuração "${config.name}" do servidor?`);
     if (!confirmed) return;
     try {
@@ -5184,6 +5525,7 @@ async function handleSavedConfigurationsClick(event) {
 
 async function handleConfigSaveSubmit(event) {
   event.preventDefault();
+  if (!ensureAuthForEditing()) return;
   const input = elements.configNameInput;
   const value = input ? input.value.trim() : '';
   const result = await upsertSavedConfiguration(value);
@@ -5469,6 +5811,7 @@ function resetPlannerState(options = {}) {
 }
 
 function clearAllData() {
+  if (!ensureAuthForEditing()) return;
   const confirmed = confirm(
     'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas no servidor.'
   );
@@ -5605,6 +5948,7 @@ function bindSelectionControls() {
 
   if (toggleMultiSelect) {
     toggleMultiSelect.addEventListener('click', () => {
+      if (!ensureAuthForEditing()) return;
       state.multiSelectMode = !state.multiSelectMode;
       updateSelectionUI();
     });
@@ -5612,6 +5956,7 @@ function bindSelectionControls() {
 
   if (editSelection) {
     editSelection.addEventListener('click', () => {
+      if (!ensureAuthForEditing()) return;
       if (!state.selectedEntity) {
         alert('Selecione um item para editar o horário.');
         return;
@@ -5627,6 +5972,7 @@ function bindSelectionControls() {
 
   if (clearSelection) {
     clearSelection.addEventListener('click', () => {
+      if (!ensureAuthForEditing()) return;
       if (!state.selectedSlots.size) return;
       clearSelectedSlots({ preserveMode: true });
       renderSchedule();
@@ -5706,6 +6052,7 @@ function bindForms() {
   if (elements.periodForm) {
     elements.periodForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!ensureAuthForEditing()) return;
       const input = document.getElementById('period-name');
       const name = input.value.trim();
       if (!name) return;
@@ -5720,6 +6067,7 @@ function bindForms() {
   if (elements.professorForm) {
     elements.professorForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!ensureAuthForEditing()) return;
       const input = document.getElementById('professor-name');
       const name = input.value.trim();
       if (!name) return;
@@ -5761,6 +6109,7 @@ function bindForms() {
   if (elements.roomForm) {
     elements.roomForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!ensureAuthForEditing()) return;
       const input = document.getElementById('room-name');
       const name = input.value.trim();
       if (!name) return;
@@ -5787,6 +6136,7 @@ function bindForms() {
   if (elements.disciplineForm) {
     elements.disciplineForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!ensureAuthForEditing()) return;
       const nameInput = elements.disciplineNameInput;
       if (!nameInput) return;
       const name = nameInput.value.trim();
@@ -5852,6 +6202,7 @@ elements.entitySelector.addEventListener('change', (event) => {
 
 async function init() {
   setupDarkModeToggle();
+  setupAuthControls();
   await loadSavedConfigurationsFromServer();
   setupProfessorFormControls();
   setupSearchableDropdowns();

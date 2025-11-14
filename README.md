@@ -40,3 +40,12 @@ A aplicação combina dois mecanismos de armazenamento:
 
 * **Rascunho local** – o estado atual permanece no `localStorage` do navegador, permitindo continuar de onde parou mesmo sem salvar no servidor.
 * **Biblioteca no servidor** – cada configuração nomeada é enviada para a API e fica disponível na lista de configurações, podendo ser carregada, sobrescrita, exportada ou removida pela interface.
+
+### Gerenciamento de usuários
+
+Os endpoints de escrita exigem autenticação e o servidor lê as credenciais do arquivo `data/users.json`. Para facilitar a manutenção dessa lista, o repositório oferece dois utilitários em Bash:
+
+* `./scripts/add-user.sh <username> <senha>` – gera um hash `scrypt` compatível com o backend e acrescenta o usuário ao arquivo. Use `--id <valor>` para definir o identificador manualmente (caso contrário, ele é derivado do login) e `--file <caminho>` para apontar outro arquivo JSON.
+* `./scripts/remove-user.sh <username|id>` – exclui o usuário pelo login ou pelo campo `id`. Também aceita `--file <caminho>` para trabalhar com um repositório alternativo.
+
+Ambos os scripts criam o diretório `data/` automaticamente (se necessário) e validam o conteúdo do JSON antes de sobrescrevê-lo, prevenindo registros duplicados ou arquivos corrompidos.
