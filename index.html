@@ -86,6 +86,39 @@
           </button>
         </div>
         <div class="top-bar__divider" aria-hidden="true"></div>
+        <div class="top-bar__filters" aria-label="Controles de visualização e seleção">
+          <div class="top-bar__section">
+            <label class="control-label" for="view-type">Visualizar por:</label>
+            <select id="view-type" class="control-select">
+              <option value="period">Período</option>
+              <option value="professor">Docente</option>
+              <option value="room">Sala</option>
+            </select>
+          </div>
+
+          <div class="top-bar__section">
+            <label class="control-label" for="entity-selector-search">Selecionar:</label>
+            <div class="searchable-select" data-select="entity-selector">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="entity-selector-search"
+                  class="searchable-input"
+                  placeholder="Buscar item"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
+            </div>
+            <select id="entity-selector" class="searchable-native">
+              <option value=""></option>
+            </select>
+          </div>
+        </div>
+        <div class="top-bar__divider" aria-hidden="true"></div>
         <div class="top-bar__project">
           <button
             type="button"
@@ -174,39 +207,6 @@
               <span class="visually-hidden">Limpar seleção</span>
             </button>
           </div>
-        </div>
-      </div>
-
-      <div class="top-bar__controls">
-        <div class="top-bar__section">
-          <label class="control-label" for="view-type">Visualizar por:</label>
-          <select id="view-type" class="control-select">
-            <option value="period">Período</option>
-            <option value="professor">Docente</option>
-            <option value="room">Sala</option>
-          </select>
-        </div>
-
-        <div class="top-bar__section">
-          <label class="control-label" for="entity-selector-search">Selecionar:</label>
-          <div class="searchable-select" data-select="entity-selector">
-            <div class="searchable-input-wrapper">
-              <input
-                type="search"
-                id="entity-selector-search"
-                class="searchable-input"
-                placeholder="Buscar item"
-                autocomplete="off"
-              />
-              <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                <span aria-hidden="true">▾</span>
-              </button>
-            </div>
-            <ul class="searchable-options" role="listbox"></ul>
-          </div>
-          <select id="entity-selector" class="searchable-native">
-            <option value=""></option>
-          </select>
         </div>
       </div>
     </div>
