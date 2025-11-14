@@ -183,35 +183,16 @@ body.theme-dark .project-hub__card--hero {
 }
 
 .project-hub__card--hero .project-hub__eyebrow {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.project-hub__card--hero h1,
-.project-hub__card--hero .project-hub__description {
   color: #fff;
 }
 
-.project-hub__card--hero .project-hub__description {
-  color: rgba(248, 251, 255, 0.9);
-}
-
 .project-hub__eyebrow {
-  margin: 0 0 0.25rem;
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.project-hub__header h1 {
   margin: 0;
   font-size: clamp(1.6rem, 3vw, 2.2rem);
-}
-
-.project-hub__description {
-  margin: 0.5rem 0 0;
-  color: var(--muted);
-  max-width: 36rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text);
 }
 
 .project-hub__actions {
