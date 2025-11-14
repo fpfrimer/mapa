@@ -208,6 +208,21 @@
             </button>
           </div>
         </div>
+        <div class="top-bar__divider" aria-hidden="true"></div>
+        <div class="top-bar__session" aria-live="polite">
+          <div class="session-indicator" id="session-indicator">
+            <span id="session-status-text" class="session-indicator__status">Sessão: visitante</span>
+            <button type="button" id="session-login-button" class="session-button">Entrar</button>
+            <button
+              type="button"
+              id="session-logout-button"
+              class="session-button session-button--secondary"
+              hidden
+            >
+              Sair
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -558,6 +573,25 @@
           <button type="submit" class="primary">Salvar</button>
           <button type="button" id="remove-assignment" class="danger">Remover horário</button>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="login-modal" class="login-modal" hidden aria-hidden="true">
+    <div class="login-modal__backdrop" data-login-dismiss></div>
+    <div class="login-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
+      <button type="button" id="login-modal-close" class="login-modal__close" aria-label="Fechar formulário de login">
+        ×
+      </button>
+      <h2 id="login-modal-title">Entrar no servidor</h2>
+      <p class="login-modal__description">Autentique-se para salvar e editar os semestres diretamente no servidor.</p>
+      <form id="login-form" class="login-form">
+        <label for="login-username">Usuário</label>
+        <input type="text" id="login-username" name="username" autocomplete="username" required />
+        <label for="login-password">Senha</label>
+        <input type="password" id="login-password" name="password" autocomplete="current-password" required />
+        <p id="login-feedback" class="login-feedback" role="status" aria-live="polite" hidden></p>
+        <button type="submit" class="primary login-submit">Entrar</button>
       </form>
     </div>
   </div>
