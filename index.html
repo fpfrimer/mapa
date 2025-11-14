@@ -17,26 +17,41 @@
             Crie novos projetos, importe um arquivo JSON ou abra um semestre já salvo no servidor.
           </p>
         </div>
-        <div class="project-hub__actions">
-          <button type="button" id="project-create" class="primary">
-            <span class="project-hub__action-content">
-              <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-add" xlink:href="assets/icons/ui-icons.svg#icon-add"></use>
-              </svg>
-              <span>Novo semestre</span>
-            </span>
+        <div class="project-hub__actions" aria-label="Ações da central de projetos">
+          <button
+            type="button"
+            id="project-create"
+            class="icon-button icon-button--action project-hub__action"
+            aria-label="Criar novo semestre"
+            title="Criar novo semestre"
+          >
+            <svg class="icon" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-add" xlink:href="assets/icons/ui-icons.svg#icon-add"></use>
+            </svg>
+            <span class="visually-hidden">Criar novo semestre</span>
           </button>
-          <label class="primary-outline project-hub__import">
+          <label
+            class="icon-button icon-button--action project-hub__action project-hub__import"
+            aria-label="Importar arquivo JSON"
+            title="Importar arquivo JSON"
+          >
             <input type="file" id="project-import" accept="application/json" />
-            <span class="project-hub__action-content">
-              <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-upload" xlink:href="assets/icons/ui-icons.svg#icon-upload"></use>
-              </svg>
-              <span>Importar JSON</span>
-            </span>
+            <svg class="icon" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-upload" xlink:href="assets/icons/ui-icons.svg#icon-upload"></use>
+            </svg>
+            <span class="visually-hidden">Importar arquivo JSON</span>
           </label>
-          <button type="button" id="project-refresh" class="ghost-button">
-            Atualizar lista
+          <button
+            type="button"
+            id="project-refresh"
+            class="icon-button icon-button--action project-hub__action"
+            aria-label="Atualizar lista de semestres"
+            title="Atualizar lista de semestres"
+          >
+            <svg class="icon" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-refresh" xlink:href="assets/icons/ui-icons.svg#icon-refresh"></use>
+            </svg>
+            <span class="visually-hidden">Atualizar lista de semestres</span>
           </button>
         </div>
       </header>
