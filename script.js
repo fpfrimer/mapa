@@ -48,6 +48,13 @@ let pendingSlotDrag = null;
 let activeSlotDrag = null;
 const suppressedSlotClickButtons = new WeakSet();
 
+const PROJECT_TITLE_NAME_MAX_LENGTH = 80;
+const projectTitleEditingState = {
+  active: false,
+  input: null,
+  previousName: ''
+};
+
 const disciplineColorPalette = [
   '#f94144',
   '#f3722c',
@@ -521,6 +528,7 @@ const elements = {
   projectBackButton: document.getElementById('project-back-button'),
   projectSaveButton: document.getElementById('project-save-button'),
   projectTitleName: document.getElementById('project-title-name'),
+  projectTitleNameText: document.getElementById('project-title-name-text'),
   periodForm: document.getElementById('period-form'),
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
@@ -4025,8 +4033,19 @@ function getProjectDisplayName(project) {
 
 function updateProjectChrome() {
   const name = getProjectDisplayName(currentProject);
-  if (elements.projectTitleName) {
+  if (elements.projectTitleNameText) {
+    elements.projectTitleNameText.textContent = name;
+  } else if (elements.projectTitleName) {
     elements.projectTitleName.textContent = name;
+  }
+  if (elements.projectTitleName) {
+    const label = currentProject
+      ? `Editar nome do semestre: ${name}`
+      : 'Definir nome do semestre';
+    elements.projectTitleName.setAttribute('aria-label', label);
+    elements.projectTitleName.title = currentProject
+      ? 'Clique para renomear o semestre'
+      : 'Clique para definir o nome do semestre';
   }
   if (elements.currentProjectName) {
     elements.currentProjectName.textContent = currentProject ? name : 'Nenhum semestre ativo';
@@ -4048,6 +4067,133 @@ function updateProjectChrome() {
   }
   if (elements.panelExportProjectButton) {
     elements.panelExportProjectButton.disabled = !currentProject;
+  }
+}
+
+function getProjectTitleEditorInput() {
+  if (projectTitleEditingState.input) {
+    return projectTitleEditingState.input;
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'project-title-editor';
+  input.className = 'top-bar__project-name top-bar__project-name-input';
+  input.maxLength = PROJECT_TITLE_NAME_MAX_LENGTH;
+  input.placeholder = 'Digite o nome do semestre';
+  input.setAttribute('aria-label', 'Nome do semestre');
+  input.addEventListener('keydown', handleProjectTitleInputKeyDown);
+  input.addEventListener('blur', handleProjectTitleInputBlur);
+  projectTitleEditingState.input = input;
+  return input;
+}
+
+function focusProjectTitleInput(input) {
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+}
+
+function handleProjectTitleInputKeyDown(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    commitProjectTitleEditing();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelProjectTitleEditing();
+  }
+}
+
+function handleProjectTitleInputBlur() {
+  if (!projectTitleEditingState.active) return;
+  commitProjectTitleEditing({ silent: true });
+}
+
+function openProjectTitleEditor() {
+  if (projectTitleEditingState.active) return;
+  if (!elements.projectTitleName || document.body.classList.contains('hub-visible')) return;
+  const input = getProjectTitleEditorInput();
+  const currentName = currentProject?.name || '';
+  projectTitleEditingState.previousName = currentName;
+  input.value = currentName;
+  elements.projectTitleName.classList.add('is-hidden');
+  elements.projectTitleName.setAttribute('aria-hidden', 'true');
+  elements.projectTitleName.insertAdjacentElement('afterend', input);
+  projectTitleEditingState.active = true;
+  focusProjectTitleInput(input);
+}
+
+function closeProjectTitleEditor(options = {}) {
+  const { restoreFocus = true } = options;
+  const button = elements.projectTitleName;
+  const input = projectTitleEditingState.input;
+  if (input?.parentNode) {
+    input.parentNode.removeChild(input);
+  }
+  projectTitleEditingState.active = false;
+  projectTitleEditingState.previousName = '';
+  if (button) {
+    button.classList.remove('is-hidden');
+    button.removeAttribute('aria-hidden');
+    if (restoreFocus) {
+      button.focus();
+    }
+  }
+}
+
+function cancelProjectTitleEditing() {
+  if (!projectTitleEditingState.active) return;
+  closeProjectTitleEditor();
+}
+
+function commitProjectTitleEditing(options = {}) {
+  if (!projectTitleEditingState.active) return false;
+  const { silent = false } = options;
+  const input = projectTitleEditingState.input;
+  if (!input) {
+    closeProjectTitleEditor();
+    return false;
+  }
+  const value = input.value.trim();
+  if (!value) {
+    if (!silent) {
+      setStorageFeedback('Informe um nome válido para o semestre.', 'warning');
+    }
+    focusProjectTitleInput(input);
+    return false;
+  }
+  const previousName = projectTitleEditingState.previousName || '';
+  closeProjectTitleEditor();
+  const updatedProject = {
+    id: currentProject?.id || null,
+    name: value,
+    savedAt: currentProject?.savedAt || null
+  };
+  setCurrentProject(updatedProject);
+  persistCurrentProjectMetadata();
+  if (value !== previousName || !previousName) {
+    synchronizeProjectTitleChange(value);
+  }
+  return true;
+}
+
+async function synchronizeProjectTitleChange(newName) {
+  if (!newName) return;
+  if (!currentProject?.id) {
+    setStorageFeedback(`Nome atualizado para "${newName}". Salve para sincronizar com o servidor.`, 'info');
+    return;
+  }
+  try {
+    const result = await handleQuickSave({ notify: false });
+    if (result === 'success') {
+      setStorageFeedback(`Nome atualizado para "${newName}".`, 'success');
+    } else {
+      setStorageFeedback('Nome atualizado, mas não foi possível sincronizar com o servidor.', 'warning');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar nome do semestre.', error);
+    setStorageFeedback('Nome atualizado, mas ocorreu um erro ao sincronizar com o servidor.', 'warning');
   }
 }
 
@@ -5180,6 +5326,21 @@ function bindStorageControls() {
 }
 
 function bindProjectControls() {
+  if (elements.projectTitleName) {
+    const startEditing = (event) => {
+      if (event) {
+        event.preventDefault();
+      }
+      openProjectTitleEditor();
+    };
+    elements.projectTitleName.addEventListener('click', startEditing);
+    elements.projectTitleName.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        openProjectTitleEditor();
+      }
+    });
+  }
   if (elements.projectCreateButton) {
     elements.projectCreateButton.addEventListener('click', handleProjectCreate);
   }
