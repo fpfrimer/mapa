@@ -1434,13 +1434,21 @@ body.theme-dark .top-bar__icon-button.is-active {
   color: var(--text);
 }
 
-#selection-summary {
-  flex: 1 1 auto;
+.selection-counter {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+#selection-count {
+  min-width: 2ch;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.88);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
 
 .selection-actions {
@@ -1469,9 +1477,10 @@ body.theme-dark .top-bar__icon-button.is-active {
     flex-wrap: wrap;
   }
 
-  #selection-summary {
+  .selection-counter {
     width: 100%;
-    white-space: normal;
+    justify-content: flex-start;
+    margin-bottom: 0.25rem;
   }
 
   .selection-actions {
