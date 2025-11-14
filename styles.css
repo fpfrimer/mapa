@@ -1185,6 +1185,53 @@ button.primary:hover {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.top-bar__project-name-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.top-bar__project-name-button:hover,
+.top-bar__project-name-button:focus-visible {
+  color: #fff;
+}
+
+.top-bar__project-name-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.top-bar__project-name-button.is-hidden {
+  display: none;
+}
+
+.top-bar__project-name-input {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
+  width: clamp(180px, 30vw, 320px);
+}
+
+.top-bar__project-name-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.top-bar__project-name-input:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+}
+
 .top-bar__controls {
   display: flex;
   flex-wrap: wrap;
