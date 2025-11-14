@@ -248,13 +248,16 @@ body.theme-dark .project-hub__card--hero {
 
 .project-hub__action {
   --hub-action-size: clamp(2.75rem, 4.8vw, 3.4rem);
+  --hub-action-icon-size: clamp(1.25rem, 3vw, 1.55rem);
+  --hub-action-icon-stroke: 2px;
   --icon-button-size: var(--hub-action-size);
   --icon-button-radius: 18px;
 }
 
 .project-hub__action .icon {
-  width: clamp(1.1rem, 2.6vw, 1.35rem);
-  height: clamp(1.1rem, 2.6vw, 1.35rem);
+  width: var(--hub-action-icon-size);
+  height: var(--hub-action-icon-size);
+  stroke-width: var(--hub-action-icon-stroke);
 }
 
 .icon-button--action {
@@ -268,10 +271,28 @@ body.theme-dark .project-hub__card--hero {
 
 .project-hub__actions .icon-button--action:hover,
 .project-hub__actions .icon-button--action:focus-visible {
-  background: rgba(41, 98, 255, 0.22);
-  border-color: rgba(41, 98, 255, 0.45);
+  background: rgba(41, 98, 255, 0.28);
+  border-color: rgba(41, 98, 255, 0.55);
   color: #fff;
   transform: translateY(-1px);
+}
+
+.project-hub__actions .icon-button--action:focus-visible {
+  outline: 2px solid rgba(41, 98, 255, 0.7);
+  outline-offset: 3px;
+}
+
+body.theme-dark .project-hub__actions .icon-button--action {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(59, 130, 246, 0.22);
+  color: var(--primary-dark);
+}
+
+body.theme-dark .project-hub__actions .icon-button--action:hover,
+body.theme-dark .project-hub__actions .icon-button--action:focus-visible {
+  background: rgba(59, 130, 246, 0.35);
+  border-color: rgba(147, 197, 253, 0.7);
+  color: #fff;
 }
 
 .project-hub__card--hero .icon-button--action {
