@@ -4508,11 +4508,11 @@ function renderSavedConfigurations() {
   renderProjectHubList();
 }
 
-function createProjectCardActionButton(symbolId, label) {
+function createProjectCardActionButton(symbolId, label, iconClass = '') {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'icon-button';
-  const icon = createIcon(symbolId, 'icon--small');
+  const icon = createIcon(symbolId, iconClass);
   if (icon) {
     button.appendChild(icon);
   }
