@@ -4539,9 +4539,15 @@ function createProjectCardElement(config, index) {
   const body = document.createElement('div');
   body.className = 'project-card__body';
 
-  const title = document.createElement('p');
+  const title = document.createElement('button');
+  title.type = 'button';
   title.className = 'project-card__title';
+  title.dataset.projectId = config.id;
+  title.dataset.projectName = config.name;
   title.textContent = config.name;
+  const renameLabel = config.name ? `Renomear semestre "${config.name}"` : 'Renomear semestre';
+  title.setAttribute('aria-label', renameLabel);
+  title.title = renameLabel;
   body.appendChild(title);
 
   const meta = document.createElement('span');
@@ -4602,9 +4608,18 @@ function createDraftProjectCard(index, projectMeta = currentProject) {
   const body = document.createElement('div');
   body.className = 'project-card__body';
 
-  const title = document.createElement('p');
+  const title = document.createElement('button');
+  title.type = 'button';
   title.className = 'project-card__title';
-  title.textContent = `Rascunho: ${getProjectDisplayName(projectMeta)}`;
+  const projectName = getProjectDisplayName(projectMeta);
+  title.dataset.projectId = projectMeta?.id || '';
+  title.dataset.projectName = projectName;
+  title.textContent = `Rascunho: ${projectName}`;
+  const renameLabel = projectName
+    ? `Renomear rascunho local "${projectName}"`
+    : 'Renomear rascunho local';
+  title.setAttribute('aria-label', renameLabel);
+  title.title = renameLabel;
   body.appendChild(title);
 
   const meta = document.createElement('span');
@@ -4697,7 +4712,109 @@ function openProjectFromConfig(config) {
   setStorageFeedback(`Semestre "${config.name}" carregado com sucesso.`, 'success');
 }
 
+async function renameServerProject(projectId, newName) {
+  const configIndex = savedConfigurations.findIndex((entry) => entry.id === projectId);
+  if (configIndex === -1) {
+    setProjectHubFeedback('Semestre não encontrado para renomear.', 'error');
+    return false;
+  }
+  const config = savedConfigurations[configIndex];
+  try {
+    const updated = await updateServerConfigurationEntry(projectId, newName, {
+      state: config.state,
+      counters: config.counters
+    });
+    if (!updated) {
+      throw new Error('Resposta inválida do servidor.');
+    }
+    savedConfigurations[configIndex] = updated;
+    sortSavedConfigurations();
+    if (currentProject?.id === projectId) {
+      setCurrentProject({
+        id: projectId,
+        name: newName,
+        savedAt: updated.savedAt || currentProject.savedAt || null
+      });
+    } else {
+      renderProjectHubList();
+    }
+    renderPanelSavedConfigList();
+    setProjectHubFeedback(`Semestre renomeado para "${newName}".`, 'success');
+    return true;
+  } catch (error) {
+    console.error('Erro ao renomear semestre.', error);
+    setProjectHubFeedback('Não foi possível renomear o semestre selecionado.', 'error');
+    return false;
+  }
+}
+
+function renameLocalDraftProject(newName) {
+  if (!newName) return;
+  if (currentProject && !currentProject.id) {
+    setCurrentProject({
+      id: null,
+      name: newName,
+      savedAt: currentProject.savedAt || null
+    });
+  } else {
+    const storedMeta = loadStoredProjectMetadata();
+    const updatedMeta = {
+      id: null,
+      name: newName,
+      savedAt: storedMeta?.savedAt || null
+    };
+    try {
+      localStorage.setItem(CURRENT_PROJECT_KEY, JSON.stringify(updatedMeta));
+    } catch (error) {
+      console.error('Erro ao atualizar metadados do rascunho local.', error);
+    }
+    renderProjectHubList();
+  }
+  setProjectHubFeedback(`Rascunho renomeado para "${newName}".`, 'success');
+}
+
+async function handleProjectCardTitleRename(target) {
+  if (!target) return;
+  const projectId = target.dataset.projectId || '';
+  const fallbackName = target.textContent ? target.textContent.replace(/^Rascunho:\s*/i, '') : '';
+  const currentName = (target.dataset.projectName || fallbackName || '').trim();
+  const promptLabel = projectId
+    ? 'Qual o novo nome do semestre?'
+    : 'Qual o novo nome do rascunho local?';
+  const input = prompt(promptLabel, currentName);
+  if (input === null) {
+    return;
+  }
+  const trimmedName = input.trim();
+  if (!trimmedName) {
+    setProjectHubFeedback('Informe um nome válido para renomear.', 'warning');
+    return;
+  }
+  if (trimmedName.length > PROJECT_TITLE_NAME_MAX_LENGTH) {
+    setProjectHubFeedback(
+      `O nome pode ter no máximo ${PROJECT_TITLE_NAME_MAX_LENGTH} caracteres.`,
+      'warning'
+    );
+    return;
+  }
+  if (trimmedName === currentName) {
+    return;
+  }
+
+  if (projectId) {
+    await renameServerProject(projectId, trimmedName);
+  } else {
+    renameLocalDraftProject(trimmedName);
+  }
+}
+
 async function handleProjectListClick(event) {
+  const titleButton = event.target.closest('.project-card__title');
+  if (titleButton) {
+    event.preventDefault();
+    await handleProjectCardTitleRename(titleButton);
+    return;
+  }
   const button = event.target.closest('button[data-project-action]');
   if (!button) return;
   const action = button.dataset.projectAction;
