@@ -83,5 +83,39 @@
     <symbol id="icon-remove" viewBox="0 0 24 24">
       <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" />
     </symbol>
+    <symbol id="icon-back" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 5l-7 7 7 7" />
+        <path d="M8 12h11" />
+      </g>
+    </symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 4h12l2 2v14H5z" />
+        <path d="M9 4v5h6V4" />
+        <path d="M9 14h6v6H9z" />
+      </g>
+    </symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V5" />
+        <path d="M7 10l5-5 5 5" />
+        <path d="M4 19h16" />
+      </g>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 4v11" />
+        <path d="M17 10l-5 5-5-5" />
+        <path d="M4 19h16" />
+      </g>
+    </symbol>
+    <symbol id="icon-open" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 7h6l2 2h8v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+        <path d="M12 13l3-3 3 3" />
+        <path d="M15 10v6" />
+      </g>
+    </symbol>
   </defs>
 </svg>

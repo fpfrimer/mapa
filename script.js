@@ -20,6 +20,7 @@ let counters = {
 };
 
 let savedConfigurations = [];
+let currentProject = null;
 
 const searchQueries = {
   period: '',
@@ -315,6 +316,7 @@ function updateDisciplineColorSuggestion(options = {}) {
 const STORAGE_KEY = 'academic-planner-state-v1';
 const COUNTERS_KEY = 'academic-planner-counters-v1';
 const CONFIG_API_URL = '/api/configurations';
+const CURRENT_PROJECT_KEY = 'planner.currentProject';
 
 const professorFormDisciplineIds = new Set();
 
@@ -509,6 +511,16 @@ const entityCollections = {
 };
 
 const elements = {
+  projectHub: document.getElementById('project-hub'),
+  plannerShell: document.getElementById('planner-shell'),
+  projectList: document.getElementById('project-list'),
+  projectCreateButton: document.getElementById('project-create'),
+  projectImportInput: document.getElementById('project-import'),
+  projectRefreshButton: document.getElementById('project-refresh'),
+  projectHubFeedback: document.getElementById('project-hub-feedback'),
+  projectBackButton: document.getElementById('project-back-button'),
+  projectSaveButton: document.getElementById('project-save-button'),
+  projectTitleName: document.getElementById('project-title-name'),
   periodForm: document.getElementById('period-form'),
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
@@ -569,6 +581,12 @@ const elements = {
   importInput: document.getElementById('import-config'),
   clearBrowserButton: document.getElementById('clear-browser'),
   storageFeedback: document.getElementById('storage-feedback'),
+  currentProjectName: document.getElementById('current-project-name'),
+  currentProjectUpdated: document.getElementById('current-project-updated'),
+  panelSaveProjectButton: document.getElementById('panel-save-project'),
+  panelExportProjectButton: document.getElementById('panel-export-project'),
+  panelOpenHubButton: document.getElementById('panel-open-hub'),
+  panelResetProjectButton: document.getElementById('panel-reset-project'),
   darkModeToggle: document.getElementById('dark-mode-toggle')
 };
 
@@ -3954,6 +3972,136 @@ function setStorageFeedback(message, variant = 'info') {
   }
 }
 
+function setProjectHubFeedback(message, variant = 'info') {
+  const feedback = elements.projectHubFeedback;
+  if (!feedback) return;
+  feedback.textContent = message || '';
+  feedback.classList.remove('success', 'error', 'warning');
+  if (variant && variant !== 'info' && message) {
+    feedback.classList.add(variant);
+  }
+}
+
+function loadStoredProjectMetadata() {
+  try {
+    const raw = localStorage.getItem(CURRENT_PROJECT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const id = typeof parsed.id === 'string' && parsed.id ? parsed.id : null;
+    const name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : '';
+    const savedAt = typeof parsed.savedAt === 'string' ? parsed.savedAt : null;
+    if (!id && !name) {
+      return null;
+    }
+    return { id, name: name || 'Semestre sem título', savedAt };
+  } catch (error) {
+    console.error('Erro ao carregar metadados do projeto atual.', error);
+    return null;
+  }
+}
+
+function persistCurrentProjectMetadata() {
+  try {
+    if (!currentProject) {
+      localStorage.removeItem(CURRENT_PROJECT_KEY);
+      return;
+    }
+    const payload = {
+      id: currentProject.id || null,
+      name: currentProject.name || '',
+      savedAt: currentProject.savedAt || null
+    };
+    localStorage.setItem(CURRENT_PROJECT_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.error('Erro ao guardar metadados do projeto atual.', error);
+  }
+}
+
+function getProjectDisplayName(project) {
+  if (!project) return 'Nenhum semestre selecionado';
+  return project.name && project.name.trim() ? project.name.trim() : 'Semestre sem título';
+}
+
+function updateProjectChrome() {
+  const name = getProjectDisplayName(currentProject);
+  if (elements.projectTitleName) {
+    elements.projectTitleName.textContent = name;
+  }
+  if (elements.currentProjectName) {
+    elements.currentProjectName.textContent = currentProject ? name : 'Nenhum semestre ativo';
+  }
+  if (elements.currentProjectUpdated) {
+    elements.currentProjectUpdated.textContent = currentProject?.savedAt
+      ? `Salvo em ${formatSavedConfigDate(currentProject.savedAt)}`
+      : 'Nunca salvo';
+  }
+  const workspaceVisible = !document.body.classList.contains('hub-visible');
+  if (elements.projectBackButton) {
+    elements.projectBackButton.disabled = document.body.classList.contains('hub-visible') || !currentProject;
+  }
+  if (elements.projectSaveButton) {
+    elements.projectSaveButton.disabled = !workspaceVisible || !currentProject;
+  }
+  if (elements.panelSaveProjectButton) {
+    elements.panelSaveProjectButton.disabled = !currentProject;
+  }
+  if (elements.panelExportProjectButton) {
+    elements.panelExportProjectButton.disabled = !currentProject;
+  }
+}
+
+function hasLocalDraft() {
+  try {
+    return Boolean(localStorage.getItem(STORAGE_KEY));
+  } catch (error) {
+    return false;
+  }
+}
+
+function setCurrentProject(project) {
+  if (project && typeof project === 'object') {
+    currentProject = {
+      id: typeof project.id === 'string' && project.id ? project.id : null,
+      name: getProjectDisplayName(project),
+      savedAt: typeof project.savedAt === 'string' ? project.savedAt : null
+    };
+  } else {
+    currentProject = null;
+  }
+  persistCurrentProjectMetadata();
+  updateProjectChrome();
+  renderProjectHubList();
+}
+
+function hasWorkspaceData() {
+  return (
+    state.periods.length > 0 ||
+    state.professors.length > 0 ||
+    state.rooms.length > 0 ||
+    state.disciplines.length > 0 ||
+    Object.keys(state.schedule || {}).length > 0
+  );
+}
+
+function confirmProjectSwitch(targetLabel = '') {
+  if (!hasWorkspaceData()) return true;
+  const label = targetLabel ? ` "${targetLabel}"` : '';
+  return confirm(
+    `Abrir${label} substituirá o semestre em edição. Salve antes de continuar se não quiser perder alterações.`
+  );
+}
+
+function showProjectHub() {
+  document.body.classList.add('hub-visible');
+  updateProjectChrome();
+}
+
+function hideProjectHub() {
+  document.body.classList.remove('hub-visible');
+  updateProjectChrome();
+}
+
 function safeClone(value) {
   if (value === undefined || value === null) {
     return value;
@@ -4030,12 +4178,18 @@ async function loadSavedConfigurationsFromServer(options = {}) {
     renderSavedConfigurations();
     if (notify) {
       setStorageFeedback('Lista de configurações carregada do servidor.', 'info');
+      setProjectHubFeedback('Lista de semestres sincronizada com o servidor.', 'success');
+    } else if (!savedConfigurations.length) {
+      setProjectHubFeedback('Nenhum semestre salvo ainda.', 'info');
+    } else {
+      setProjectHubFeedback('');
     }
   } catch (error) {
     console.error('Erro ao carregar configurações do servidor.', error);
     savedConfigurations = [];
     renderSavedConfigurations();
     setStorageFeedback('Não foi possível carregar as configurações do servidor.', 'error');
+    setProjectHubFeedback('Não foi possível carregar os semestres do servidor.', 'error');
   }
 }
 
@@ -4110,7 +4264,7 @@ function formatSavedConfigDate(isoString) {
   }
 }
 
-function renderSavedConfigurations() {
+function renderPanelSavedConfigList() {
   const list = elements.savedConfigList;
   if (!list) return;
   list.innerHTML = '';
@@ -4172,6 +4326,410 @@ function renderSavedConfigurations() {
     item.appendChild(actions);
     list.appendChild(item);
   });
+}
+
+function renderProjectHubList() {
+  const list = elements.projectList;
+  if (!list) return;
+  list.innerHTML = '';
+
+  let index = 1;
+  if (currentProject && !currentProject.id) {
+    list.appendChild(createDraftProjectCard(index));
+    index += 1;
+  } else if (!currentProject && hasLocalDraft()) {
+    const storedMeta = loadStoredProjectMetadata();
+    const fallbackMeta = storedMeta || { name: 'Rascunho local', id: null, savedAt: null };
+    list.appendChild(createDraftProjectCard(index, fallbackMeta));
+    index += 1;
+  }
+
+  savedConfigurations.forEach((config) => {
+    list.appendChild(createProjectCardElement(config, index));
+    index += 1;
+  });
+
+  if (!list.children.length) {
+    const empty = document.createElement('li');
+    empty.className = 'project-card project-card--empty';
+    empty.textContent = 'Nenhum semestre salvo ainda. Crie ou importe um projeto.';
+    list.appendChild(empty);
+  }
+}
+
+function renderSavedConfigurations() {
+  renderPanelSavedConfigList();
+  renderProjectHubList();
+}
+
+function createProjectCardActionButton(symbolId, label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'icon-button';
+  const icon = createIcon(symbolId, 'icon--small');
+  if (icon) {
+    button.appendChild(icon);
+  }
+  if (label) {
+    button.title = label;
+    button.appendChild(createVisuallyHiddenText(label));
+  }
+  return button;
+}
+
+function createProjectCardElement(config, index) {
+  const item = document.createElement('li');
+  item.className = 'project-card';
+  const isActive = currentProject && currentProject.id && config.id === currentProject.id;
+  if (isActive) {
+    item.classList.add('is-active');
+  }
+
+  const indexLabel = document.createElement('span');
+  indexLabel.className = 'project-card__index';
+  indexLabel.textContent = `${index}.`;
+  item.appendChild(indexLabel);
+
+  const body = document.createElement('div');
+  body.className = 'project-card__body';
+
+  const title = document.createElement('p');
+  title.className = 'project-card__title';
+  title.textContent = config.name;
+  body.appendChild(title);
+
+  const meta = document.createElement('span');
+  meta.className = 'project-card__meta';
+  const metaText = formatSavedConfigDate(config.savedAt);
+  meta.textContent = metaText ? `Atualizado em ${metaText}` : 'Sem data registrada';
+  body.appendChild(meta);
+
+  if (isActive) {
+    const badge = document.createElement('span');
+    badge.className = 'project-card__badge';
+    const badgeIcon = createIcon('icon-save', 'icon--small');
+    if (badgeIcon) {
+      badge.appendChild(badgeIcon);
+    }
+    badge.appendChild(document.createTextNode('Em edição'));
+    body.appendChild(badge);
+  }
+
+  item.appendChild(body);
+
+  const actions = document.createElement('div');
+  actions.className = 'project-card__actions';
+
+  const openButton = createProjectCardActionButton('icon-open', 'Abrir semestre');
+  openButton.dataset.projectAction = 'open';
+  openButton.dataset.projectId = config.id;
+  actions.appendChild(openButton);
+
+  const exportButton = createProjectCardActionButton('icon-download', 'Exportar semestre');
+  exportButton.dataset.projectAction = 'export';
+  exportButton.dataset.projectId = config.id;
+  actions.appendChild(exportButton);
+
+  const deleteButton = createProjectCardActionButton('icon-delete', 'Excluir semestre');
+  deleteButton.classList.add('danger');
+  deleteButton.dataset.projectAction = 'delete';
+  deleteButton.dataset.projectId = config.id;
+  actions.appendChild(deleteButton);
+
+  item.appendChild(actions);
+  return item;
+}
+
+function createDraftProjectCard(index, projectMeta = currentProject) {
+  const item = document.createElement('li');
+  item.className = 'project-card is-active';
+  const indexLabel = document.createElement('span');
+  indexLabel.className = 'project-card__index';
+  indexLabel.textContent = `${index}.`;
+  item.appendChild(indexLabel);
+
+  const body = document.createElement('div');
+  body.className = 'project-card__body';
+
+  const title = document.createElement('p');
+  title.className = 'project-card__title';
+  title.textContent = `Rascunho: ${getProjectDisplayName(projectMeta)}`;
+  body.appendChild(title);
+
+  const meta = document.createElement('span');
+  meta.className = 'project-card__meta';
+  meta.textContent = 'Guardado localmente no navegador.';
+  body.appendChild(meta);
+
+  const badge = document.createElement('span');
+  badge.className = 'project-card__badge';
+  const icon = createIcon('icon-save', 'icon--small');
+  if (icon) {
+    badge.appendChild(icon);
+  }
+  badge.appendChild(document.createTextNode('Não sincronizado'));
+  body.appendChild(badge);
+
+  item.appendChild(body);
+
+  const actions = document.createElement('div');
+  actions.className = 'project-card__actions';
+
+  const resumeButton = createProjectCardActionButton('icon-open', 'Retomar rascunho');
+  resumeButton.dataset.projectAction = 'resume-draft';
+  actions.appendChild(resumeButton);
+
+  const saveButton = createProjectCardActionButton('icon-save', 'Salvar no servidor');
+  saveButton.dataset.projectAction = 'save-current';
+  actions.appendChild(saveButton);
+
+  const discardButton = createProjectCardActionButton('icon-delete', 'Descartar rascunho');
+  discardButton.classList.add('danger');
+  discardButton.dataset.projectAction = 'discard-draft';
+  actions.appendChild(discardButton);
+
+  item.appendChild(actions);
+  return item;
+}
+
+function resumeLocalDraft() {
+  const restored = restoreStateFromStorage({ notify: false });
+  if (!restored) {
+    setProjectHubFeedback('Nenhum rascunho local disponível.', 'warning');
+    return;
+  }
+  if (!currentProject) {
+    const storedMeta = loadStoredProjectMetadata();
+    if (storedMeta) {
+      setCurrentProject(storedMeta);
+    } else {
+      setCurrentProject({ id: null, name: 'Rascunho local', savedAt: null });
+    }
+  }
+  hideProjectHub();
+  setStorageFeedback('Rascunho carregado do navegador.', 'success');
+}
+
+function discardLocalDraft() {
+  const confirmed = confirm('Deseja descartar o rascunho local salvo no navegador?');
+  if (!confirmed) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(COUNTERS_KEY);
+  resetPlannerState({ persist: false });
+  if (!currentProject || !currentProject.id) {
+    setCurrentProject(null);
+  }
+  setProjectHubFeedback('Rascunho local removido.', 'warning');
+}
+
+function applyConfigurationPayload(config) {
+  if (!config || typeof config !== 'object') return;
+  applyStateFromData(safeClone(config.state));
+  if (config.counters && typeof config.counters === 'object') {
+    counters = { ...counters, ...safeClone(config.counters) };
+  } else {
+    rebuildCounters();
+  }
+  persistState();
+}
+
+function openProjectFromConfig(config) {
+  if (!config) return;
+  if (currentProject && currentProject.id === config.id) {
+    hideProjectHub();
+    return;
+  }
+  if (!confirmProjectSwitch(config.name)) return;
+  applyConfigurationPayload(config);
+  setCurrentProject(config);
+  hideProjectHub();
+  setStorageFeedback(`Semestre "${config.name}" carregado com sucesso.`, 'success');
+}
+
+async function handleProjectListClick(event) {
+  const button = event.target.closest('button[data-project-action]');
+  if (!button) return;
+  const action = button.dataset.projectAction;
+  if (action === 'resume-draft') {
+    resumeLocalDraft();
+    return;
+  }
+  if (action === 'save-current') {
+    await handleQuickSave({ notify: true });
+    return;
+  }
+  if (action === 'discard-draft') {
+    discardLocalDraft();
+    return;
+  }
+  const configId = button.dataset.projectId;
+  if (!configId) return;
+  const config = savedConfigurations.find((entry) => entry.id === configId);
+  if (!config) {
+    setProjectHubFeedback('Semestre não encontrado no servidor.', 'error');
+    return;
+  }
+  if (action === 'open') {
+    openProjectFromConfig(config);
+    return;
+  }
+  if (action === 'export') {
+    exportConfiguration({ configuration: config });
+    setProjectHubFeedback(`Semestre "${config.name}" exportado.`, 'success');
+    return;
+  }
+  if (action === 'delete') {
+    const confirmed = confirm(`Deseja remover o semestre "${config.name}" do servidor?`);
+    if (!confirmed) return;
+    try {
+      await deleteServerConfigurationEntry(configId);
+      savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
+      renderSavedConfigurations();
+      setProjectHubFeedback(`Semestre "${config.name}" removido.`, 'warning');
+      if (currentProject?.id === configId) {
+        setCurrentProject({ id: null, name: config.name, savedAt: null });
+      }
+    } catch (error) {
+      console.error('Erro ao remover semestre.', error);
+      setProjectHubFeedback('Não foi possível remover o semestre selecionado.', 'error');
+    }
+  }
+}
+
+function handleProjectCreate() {
+  const input = prompt('Qual o nome do novo semestre?');
+  const trimmed = input ? input.trim() : '';
+  if (!trimmed) {
+    setProjectHubFeedback('Informe um nome para criar o semestre.', 'warning');
+    return;
+  }
+  if (!confirmProjectSwitch(trimmed)) return;
+  resetPlannerState();
+  setCurrentProject({ id: null, name: trimmed, savedAt: null });
+  hideProjectHub();
+  setProjectHubFeedback('');
+}
+
+function handleProjectHubImport(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (loadEvent) => {
+    try {
+      const text = loadEvent.target?.result;
+      const parsed = JSON.parse(text);
+      const payload = parsed.state && typeof parsed.state === 'object' ? parsed.state : parsed;
+      const sanitizedState = payload && typeof payload === 'object' ? safeClone(payload) : {};
+      const importedCounters =
+        parsed.counters && typeof parsed.counters === 'object' ? safeClone(parsed.counters) : null;
+      const rawName =
+        typeof parsed.name === 'string'
+          ? parsed.name
+          : typeof payload?.name === 'string'
+          ? payload.name
+          : '';
+      const fallbackName =
+        rawName && rawName.trim()
+          ? rawName.trim()
+          : `Importado em ${
+              formatSavedConfigDate(new Date().toISOString()) || new Date().toLocaleString('pt-BR')
+            }`;
+      if (!confirmProjectSwitch(fallbackName)) {
+        setProjectHubFeedback('Importação cancelada.', 'warning');
+        return;
+      }
+      applyStateFromData(sanitizedState);
+      if (importedCounters) {
+        counters = { ...counters, ...importedCounters };
+      } else {
+        rebuildCounters();
+      }
+      persistState();
+      let entry = null;
+      try {
+        entry = await createServerConfigurationEntry(fallbackName, {
+          state: sanitizedState,
+          counters: importedCounters
+        });
+        if (entry) {
+          savedConfigurations.push(entry);
+          sortSavedConfigurations();
+        }
+      } catch (error) {
+        console.warn('Semestre importado apenas localmente.', error);
+      }
+      if (entry) {
+        setCurrentProject(entry);
+        setProjectHubFeedback(`Semestre "${entry.name}" importado e salvo.`, 'success');
+      } else {
+        setCurrentProject({ id: null, name: fallbackName, savedAt: null });
+        setProjectHubFeedback('Semestre importado apenas localmente. Salve para sincronizar.', 'warning');
+      }
+      renderSavedConfigurations();
+      hideProjectHub();
+    } catch (error) {
+      console.error('Erro ao importar semestre.', error);
+      setProjectHubFeedback('Arquivo inválido. Verifique o conteúdo JSON.', 'error');
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function handleQuickSave(options = {}) {
+  const { notify = true } = options;
+  if (!currentProject) {
+    const storedMeta = loadStoredProjectMetadata();
+    if (storedMeta) {
+      setCurrentProject(storedMeta);
+    }
+  }
+  let name = currentProject?.name || '';
+  if (!name) {
+    const input = prompt('Como deseja nomear este semestre?');
+    name = input ? input.trim() : '';
+    if (!name) {
+      if (notify) {
+        setStorageFeedback('Informe um nome para salvar o semestre.', 'warning');
+      }
+      return 'cancelled';
+    }
+    setCurrentProject({ id: currentProject?.id || null, name, savedAt: currentProject?.savedAt || null });
+  }
+  const packageData = createConfigurationPackage();
+  try {
+    let entry;
+    if (currentProject?.id) {
+      entry = await updateServerConfigurationEntry(currentProject.id, name, packageData);
+    } else {
+      entry = await createServerConfigurationEntry(name, packageData);
+    }
+    if (!entry) {
+      throw new Error('Resposta inválida do servidor.');
+    }
+    const existingIndex = savedConfigurations.findIndex((cfg) => cfg.id === entry.id);
+    if (existingIndex >= 0) {
+      savedConfigurations[existingIndex] = entry;
+    } else {
+      savedConfigurations.push(entry);
+    }
+    sortSavedConfigurations();
+    setCurrentProject(entry);
+    renderSavedConfigurations();
+    if (notify) {
+      setStorageFeedback(`Semestre "${entry.name}" salvo no servidor.`, 'success');
+    }
+    setProjectHubFeedback(`Semestre "${entry.name}" sincronizado.`, 'success');
+    return 'success';
+  } catch (error) {
+    console.error('Erro ao salvar semestre.', error);
+    if (notify) {
+      setStorageFeedback('Não foi possível salvar o semestre.', 'error');
+    }
+    setProjectHubFeedback('Não foi possível salvar o semestre no servidor.', 'error');
+    return 'error';
+  }
 }
 
 async function upsertSavedConfiguration(name, configuration, options = {}) {
@@ -4266,14 +4824,7 @@ async function handleSavedConfigurationsClick(event) {
   }
 
   if (action === 'load') {
-    applyStateFromData(safeClone(config.state));
-    if (config.counters && typeof config.counters === 'object') {
-      counters = { ...counters, ...safeClone(config.counters) };
-    } else {
-      rebuildCounters();
-    }
-    persistState();
-    setStorageFeedback(`Configuração "${config.name}" carregada com sucesso.`, 'success');
+    openProjectFromConfig(config);
     return;
   }
 
@@ -4289,6 +4840,9 @@ async function handleSavedConfigurationsClick(event) {
       await deleteServerConfigurationEntry(configId);
       savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
       renderSavedConfigurations();
+      if (currentProject?.id === configId) {
+        setCurrentProject({ id: null, name: config.name, savedAt: null });
+      }
       setStorageFeedback(`Configuração "${config.name}" removida do servidor.`, 'warning');
     } catch (error) {
       console.error('Erro ao remover configuração do servidor.', error);
@@ -4548,11 +5102,8 @@ function handleImportFile(event) {
   reader.readAsText(file);
 }
 
-function clearAllData() {
-  const confirmed = confirm(
-    'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas no servidor.'
-  );
-  if (!confirmed) return;
+function resetPlannerState(options = {}) {
+  const { persist = true } = options;
   state.periods = [];
   state.professors = [];
   state.rooms = [];
@@ -4564,7 +5115,9 @@ function clearAllData() {
   state.entityEditing = null;
   clearSelectedSlots();
   counters = { period: 1, professor: 1, room: 1, discipline: 1 };
-  elements.viewTypeSelect.value = state.view;
+  if (elements.viewTypeSelect) {
+    elements.viewTypeSelect.value = state.view;
+  }
   professorFormDisciplineIds.clear();
   if (elements.professorDisciplineSelect) {
     elements.professorDisciplineSelect.value = '';
@@ -4578,6 +5131,18 @@ function clearAllData() {
   updateEntitySelector();
   resetDisciplineColorInput();
   updateDisciplineColorSuggestion({ force: true });
+  updateSelectionUI();
+  if (persist) {
+    persistState();
+  }
+}
+
+function clearAllData() {
+  const confirmed = confirm(
+    'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas no servidor.'
+  );
+  if (!confirmed) return;
+  resetPlannerState({ persist: false });
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(COUNTERS_KEY);
   setStorageFeedback('Cronograma atual limpo. As configurações nomeadas continuam disponíveis no servidor.', 'warning');
@@ -4611,6 +5176,43 @@ function bindStorageControls() {
   }
   if (elements.clearBrowserButton) {
     elements.clearBrowserButton.addEventListener('click', clearAllData);
+  }
+}
+
+function bindProjectControls() {
+  if (elements.projectCreateButton) {
+    elements.projectCreateButton.addEventListener('click', handleProjectCreate);
+  }
+  if (elements.projectRefreshButton) {
+    elements.projectRefreshButton.addEventListener('click', () =>
+      loadSavedConfigurationsFromServer({ notify: true })
+    );
+  }
+  if (elements.projectImportInput) {
+    elements.projectImportInput.addEventListener('change', handleProjectHubImport);
+  }
+  if (elements.projectList) {
+    elements.projectList.addEventListener('click', handleProjectListClick);
+  }
+  if (elements.projectBackButton) {
+    elements.projectBackButton.addEventListener('click', showProjectHub);
+  }
+  if (elements.projectSaveButton) {
+    elements.projectSaveButton.addEventListener('click', () => handleQuickSave({ notify: true }));
+  }
+  if (elements.panelSaveProjectButton) {
+    elements.panelSaveProjectButton.addEventListener('click', () => handleQuickSave({ notify: true }));
+  }
+  if (elements.panelExportProjectButton) {
+    elements.panelExportProjectButton.addEventListener('click', () => {
+      exportConfiguration({ suggestedName: currentProject?.name || '' });
+    });
+  }
+  if (elements.panelOpenHubButton) {
+    elements.panelOpenHubButton.addEventListener('click', showProjectHub);
+  }
+  if (elements.panelResetProjectButton) {
+    elements.panelResetProjectButton.addEventListener('click', clearAllData);
   }
 }
 
@@ -4909,19 +5511,25 @@ async function init() {
   setupSearchableDropdowns();
   bindForms();
   bindStorageControls();
+  bindProjectControls();
   bindManagementPanel();
   bindSelectionControls();
   bindSearchFilters();
   resetSearchFilters();
+  refreshLists();
+  if (elements.viewTypeSelect) {
+    elements.viewTypeSelect.value = state.view;
+  }
+  updateEntitySelector();
   updateSelectionUI();
   setStorageFeedback('');
-  const restored = restoreStateFromStorage();
-  if (!restored) {
-    refreshLists();
-    elements.viewTypeSelect.value = state.view;
-    updateEntitySelector();
+  currentProject = loadStoredProjectMetadata();
+  if (currentProject && !currentProject.id && !hasLocalDraft()) {
+    currentProject = null;
+    persistCurrentProjectMetadata();
   }
-  updateSelectionUI();
+  updateProjectChrome();
+  renderProjectHubList();
 }
 
 function startApp() {
