@@ -4571,6 +4571,11 @@ function createProjectCardElement(config, index) {
   openButton.dataset.projectId = config.id;
   actions.appendChild(openButton);
 
+  const cloneButton = createProjectCardActionButton('icon-duplicate', 'Duplicar semestre');
+  cloneButton.dataset.projectAction = 'clone';
+  cloneButton.dataset.projectId = config.id;
+  actions.appendChild(cloneButton);
+
   const exportButton = createProjectCardActionButton('icon-download', 'Exportar semestre');
   exportButton.dataset.projectAction = 'export';
   exportButton.dataset.projectId = config.id;
@@ -4722,6 +4727,61 @@ async function handleProjectListClick(event) {
   if (action === 'export') {
     exportConfiguration({ configuration: config });
     setProjectHubFeedback(`Semestre "${config.name}" exportado.`, 'success');
+    return;
+  }
+  if (action === 'clone') {
+    const stateClone = config.state && typeof config.state === 'object' ? safeClone(config.state) : null;
+    if (!stateClone) {
+      setProjectHubFeedback('Não foi possível duplicar o semestre selecionado.', 'error');
+      return;
+    }
+    const countersClone =
+      config.counters && typeof config.counters === 'object' ? safeClone(config.counters) : null;
+    const defaultName = config.name ? `Cópia de ${config.name}` : 'Cópia de semestre';
+    const inputName = prompt('Qual o nome da nova cópia do semestre?', defaultName);
+    if (inputName === null) {
+      setProjectHubFeedback('Clonagem cancelada.', 'warning');
+      return;
+    }
+    const trimmedName = inputName.trim();
+    if (!trimmedName) {
+      setProjectHubFeedback('Informe um nome válido para concluir a clonagem.', 'warning');
+      return;
+    }
+    if (trimmedName.length > PROJECT_TITLE_NAME_MAX_LENGTH) {
+      setProjectHubFeedback(
+        `O nome pode ter no máximo ${PROJECT_TITLE_NAME_MAX_LENGTH} caracteres.`,
+        'warning'
+      );
+      return;
+    }
+
+    applyConfigurationPayload({ state: stateClone, counters: countersClone });
+
+    let createdEntry = null;
+    try {
+      createdEntry = await createServerConfigurationEntry(trimmedName, {
+        state: safeClone(stateClone),
+        counters: countersClone ? safeClone(countersClone) : null
+      });
+    } catch (error) {
+      console.error('Erro ao clonar semestre no servidor.', error);
+    }
+
+    if (createdEntry) {
+      savedConfigurations.push(createdEntry);
+      sortSavedConfigurations();
+      setCurrentProject(createdEntry);
+      renderSavedConfigurations();
+      hideProjectHub();
+      setStorageFeedback(`Semestre "${createdEntry.name}" clonado com sucesso.`, 'success');
+      setProjectHubFeedback(`Semestre "${createdEntry.name}" duplicado e sincronizado.`, 'success');
+    } else {
+      setCurrentProject({ id: null, name: trimmedName, savedAt: null });
+      hideProjectHub();
+      setStorageFeedback('Semestre clonado localmente. Salve para sincronizar.', 'warning');
+      setProjectHubFeedback('Semestre clonado localmente. Salve para sincronizar.', 'warning');
+    }
     return;
   }
   if (action === 'delete') {
