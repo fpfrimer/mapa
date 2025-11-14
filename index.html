@@ -6,10 +6,79 @@
   <title>Mapa de Horários Acadêmicos</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="hub-visible">
+  <section id="project-hub" class="project-hub" aria-label="Projetos de semestre">
+    <div class="project-hub__card">
+      <header class="project-hub__header">
+        <div>
+          <p class="project-hub__eyebrow">Horários Acadêmicos e Logística • HAL</p>
+          <h1>Escolha um semestre para editar</h1>
+          <p class="project-hub__description">
+            Crie novos projetos, importe um arquivo JSON ou abra um semestre já salvo no servidor.
+          </p>
+        </div>
+        <div class="project-hub__actions">
+          <button type="button" id="project-create" class="primary">
+            <span class="project-hub__action-content">
+              <svg class="icon" aria-hidden="true" focusable="false">
+                <use href="assets/icons/ui-icons.svg#icon-add" xlink:href="assets/icons/ui-icons.svg#icon-add"></use>
+              </svg>
+              <span>Novo semestre</span>
+            </span>
+          </button>
+          <label class="primary-outline project-hub__import">
+            <input type="file" id="project-import" accept="application/json" />
+            <span class="project-hub__action-content">
+              <svg class="icon" aria-hidden="true" focusable="false">
+                <use href="assets/icons/ui-icons.svg#icon-upload" xlink:href="assets/icons/ui-icons.svg#icon-upload"></use>
+              </svg>
+              <span>Importar JSON</span>
+            </span>
+          </label>
+          <button type="button" id="project-refresh" class="ghost-button">
+            Atualizar lista
+          </button>
+        </div>
+      </header>
+
+      <ul id="project-list" class="project-list" aria-live="polite"></ul>
+      <p id="project-hub-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <div id="planner-shell" class="planner-shell">
   <header>
     <div class="top-bar" role="region" aria-label="Seleção de visualização">
-      <h1 class="top-bar__title">Mapa de horários acadêmicos COELE-TD</h1>
+      <div class="top-bar__intro">
+        <div class="project-toolbar">
+          <button
+            type="button"
+            id="project-back-button"
+            class="icon-button"
+            aria-label="Voltar para a tela inicial"
+            title="Voltar para a tela inicial"
+          >
+            <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-back" xlink:href="assets/icons/ui-icons.svg#icon-back"></use>
+            </svg>
+          </button>
+          <button
+            type="button"
+            id="project-save-button"
+            class="icon-button"
+            aria-label="Salvar semestre"
+            title="Salvar semestre"
+          >
+            <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+              <use href="assets/icons/ui-icons.svg#icon-save" xlink:href="assets/icons/ui-icons.svg#icon-save"></use>
+            </svg>
+          </button>
+        </div>
+        <div class="top-bar__titles">
+          <h1 class="top-bar__title">Mapa de horários acadêmicos COELE-TD</h1>
+          <p id="project-title-name" class="top-bar__project-name">Nenhum semestre selecionado</p>
+        </div>
+      </div>
 
       <div class="top-bar__controls">
         <div class="top-bar__section">
@@ -333,33 +402,28 @@
         </div>
       </section>
 
-      <section id="panel-settings" class="panel-section data-section" data-panel="settings" data-title="Configurações" hidden>
-        <h3 class="visually-hidden">Configurações</h3>
-        <p class="section-helper">Salve o cronograma para continuar a edição depois ou compartilhar com outras pessoas.</p>
+      <section id="panel-settings" class="panel-section data-section" data-panel="settings" data-title="Projeto atual" hidden>
+        <h3 class="visually-hidden">Projeto atual</h3>
+        <p class="section-helper">Acompanhe o status do semestre aberto e acesse ações rápidas.</p>
 
-        <form id="config-save-form" class="inline-form config-save-form">
-          <input type="text" id="config-name" placeholder="Nome da configuração" aria-label="Nome da configuração" required />
-          <button type="submit">Salvar configuração</button>
-        </form>
-
-        <div class="saved-configs">
-          <div class="saved-configs-header">
-            <h4>Configurações salvas neste navegador</h4>
-            <button type="button" id="refresh-configs" class="secondary-link" aria-label="Atualizar lista de configurações">Atualizar lista</button>
+        <div class="project-summary" aria-live="polite">
+          <div>
+            <span>Semestre</span>
+            <strong id="current-project-name">Nenhum semestre ativo</strong>
           </div>
-          <ul id="saved-config-list" class="saved-config-list" aria-live="polite"></ul>
+          <div>
+            <span>Última sincronização</span>
+            <strong id="current-project-updated">Nunca salvo</strong>
+          </div>
         </div>
 
-        <div class="data-actions">
-          <button type="button" id="save-browser">Salvar rascunho rápido</button>
-          <button type="button" id="restore-browser">Recarregar rascunho</button>
-          <button type="button" id="export-config">Exportar atual</button>
-          <label class="import-label">
-            <input type="file" id="import-config" accept="application/json" />
-            <span>Importar JSON</span>
-          </label>
-          <button type="button" id="clear-browser" class="danger-outline">Limpar dados atuais</button>
+        <div class="data-actions data-actions--stacked">
+          <button type="button" id="panel-save-project">Salvar agora</button>
+          <button type="button" id="panel-export-project">Exportar JSON</button>
+          <button type="button" id="panel-open-hub" class="ghost-button">Tela inicial de projetos</button>
+          <button type="button" id="panel-reset-project" class="danger-outline">Limpar dados do semestre</button>
         </div>
+        <p class="section-helper">Use a tela inicial para criar, duplicar ou remover outros semestres.</p>
         <p id="storage-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
       </section>
     </div>
@@ -475,6 +539,7 @@
   <template id="cell-template">
     <button class="slot-cell" type="button"></button>
   </template>
+  </div>
 
   <script src="script.js"></script>
 </body>
