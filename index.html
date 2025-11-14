@@ -60,7 +60,7 @@
   <div id="planner-shell" class="planner-shell">
   <header>
     <div class="top-bar" role="region" aria-label="Seleção de visualização">
-      <div class="top-bar__intro">
+      <div class="top-bar__primary">
         <div class="project-toolbar">
           <button
             type="button"
@@ -85,8 +85,8 @@
             </svg>
           </button>
         </div>
-        <div class="top-bar__titles">
-          <h1 class="top-bar__title">Mapa de horários acadêmicos COELE-TD</h1>
+        <div class="top-bar__divider" aria-hidden="true"></div>
+        <div class="top-bar__project">
           <button
             type="button"
             id="project-title-name"
@@ -97,43 +97,8 @@
             <span id="project-title-name-text">Nenhum semestre selecionado</span>
           </button>
         </div>
-      </div>
-
-      <div class="top-bar__controls">
-        <div class="top-bar__section">
-          <label class="control-label" for="view-type">Visualizar por:</label>
-          <select id="view-type" class="control-select">
-            <option value="period">Período</option>
-            <option value="professor">Docente</option>
-            <option value="room">Sala</option>
-          </select>
-        </div>
-
-        <div class="top-bar__section">
-          <label class="control-label" for="entity-selector-search">Selecionar:</label>
-          <div class="searchable-select" data-select="entity-selector">
-            <div class="searchable-input-wrapper">
-              <input
-                type="search"
-                id="entity-selector-search"
-                class="searchable-input"
-                placeholder="Buscar item"
-                autocomplete="off"
-              />
-              <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                <span aria-hidden="true">▾</span>
-              </button>
-            </div>
-            <ul class="searchable-options" role="listbox"></ul>
-          </div>
-          <select id="entity-selector" class="searchable-native">
-            <option value=""></option>
-          </select>
-        </div>
-
         <div class="top-bar__divider" aria-hidden="true"></div>
-
-        <div class="top-bar__section top-bar__section--selection" aria-live="polite">
+        <div class="top-bar__selection" aria-live="polite">
           <button
             type="button"
             id="toggle-multi-select"
@@ -155,7 +120,7 @@
             </svg>
             <span class="visually-hidden">Ativar seleção múltipla</span>
           </button>
-          <span id="selection-summary" class="selection-summary">Nenhum horário selecionado.</span>
+          <span id="selection-summary">Nenhum horário selecionado.</span>
           <div class="selection-actions">
             <button
               type="button"
@@ -200,6 +165,39 @@
               <span class="visually-hidden">Limpar seleção</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      <div class="top-bar__controls">
+        <div class="top-bar__section">
+          <label class="control-label" for="view-type">Visualizar por:</label>
+          <select id="view-type" class="control-select">
+            <option value="period">Período</option>
+            <option value="professor">Docente</option>
+            <option value="room">Sala</option>
+          </select>
+        </div>
+
+        <div class="top-bar__section">
+          <label class="control-label" for="entity-selector-search">Selecionar:</label>
+          <div class="searchable-select" data-select="entity-selector">
+            <div class="searchable-input-wrapper">
+              <input
+                type="search"
+                id="entity-selector-search"
+                class="searchable-input"
+                placeholder="Buscar item"
+                autocomplete="off"
+              />
+              <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                <span aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <ul class="searchable-options" role="listbox"></ul>
+          </div>
+          <select id="entity-selector" class="searchable-native">
+            <option value=""></option>
+          </select>
         </div>
       </div>
     </div>
