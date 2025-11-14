@@ -24,6 +24,10 @@ Aplicação front-end simples para construir cronogramas semanais de cursos.
 
 O cronograma em edição continua sendo preservado automaticamente no armazenamento local do navegador para facilitar rascunhos rápidos. As configurações nomeadas, porém, passam a ser guardadas no servidor e ficam disponíveis para qualquer pessoa que acesse a mesma instância da aplicação.
 
+## Ícones reutilizáveis
+
+Todos os botões utilizam o sprite `assets/icons/ui-icons.svg`. Além dos símbolos já existentes para ações como salvar, excluir ou importar, a biblioteca agora também oferece `icon-refresh` (atualizar listas) e `icon-duplicate` (duplicar semestres) prontos para serem reutilizados em novos componentes que precisem dessas interações visuais.
+
 ## Executando o servidor
 
 1. Com o Node.js instalado, execute `npm start` na pasta do projeto. O servidor integrado não possui dependências externas e inicializa diretamente com `node server.js`.
