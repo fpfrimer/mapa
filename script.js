@@ -564,7 +564,7 @@ const elements = {
   scheduleContainer: document.getElementById('schedule-container'),
   scheduleTitle: document.getElementById('schedule-title'),
   toggleMultiSelect: document.getElementById('toggle-multi-select'),
-  selectionSummary: document.getElementById('selection-summary'),
+  selectionCount: document.getElementById('selection-count'),
   editSelection: document.getElementById('edit-selection'),
   clearSelection: document.getElementById('clear-selection'),
   viewSummary: document.getElementById('view-summary'),
@@ -2169,8 +2169,16 @@ function formatSlotLabel(dayKey, slotCode) {
   return `${day ? day.label : dayKey} • ${slotInfo.code} (${slotInfo.time})`;
 }
 
+function getSelectionDescription(count) {
+  if (!count) {
+    return 'Nenhum horário selecionado';
+  }
+  const plural = count > 1 ? 's' : '';
+  return `${count} horário${plural} selecionado${plural}`;
+}
+
 function updateSelectionUI() {
-  const { toggleMultiSelect, selectionSummary, editSelection, clearSelection } = elements;
+  const { toggleMultiSelect, selectionCount, editSelection, clearSelection } = elements;
   if (toggleMultiSelect) {
     const toggleLabel = state.multiSelectMode
       ? 'Desativar seleção múltipla'
@@ -2185,13 +2193,13 @@ function updateSelectionUI() {
     }
   }
   const count = state.selectedSlots.size;
-  if (selectionSummary) {
-    const baseText = count
-      ? `${count} horário${count > 1 ? 's' : ''} selecionado${count > 1 ? 's' : ''}.`
-      : 'Nenhum horário selecionado.';
-    selectionSummary.textContent = state.multiSelectMode
-      ? `Seleção múltipla ativa — ${baseText}`
-      : baseText;
+  if (selectionCount) {
+    selectionCount.textContent = count;
+    const description = getSelectionDescription(count);
+    const label = state.multiSelectMode
+      ? `Seleção múltipla ativa. ${description}`
+      : description;
+    selectionCount.setAttribute('aria-label', label);
   }
   if (editSelection) {
     editSelection.disabled = !count;

@@ -98,29 +98,38 @@
           </button>
         </div>
         <div class="top-bar__divider" aria-hidden="true"></div>
-        <div class="top-bar__selection" aria-live="polite">
-          <button
-            type="button"
-            id="toggle-multi-select"
-            class="icon-button top-bar__icon-button"
-            aria-pressed="false"
-            aria-label="Ativar seleção múltipla"
-            title="Ativar seleção múltipla"
-          >
-            <svg
-              class="icon icon--toolbar"
-              aria-hidden="true"
-              focusable="false"
-              xmlns:xlink="http://www.w3.org/1999/xlink"
+        <div class="top-bar__selection">
+          <div class="selection-counter" aria-live="polite">
+            <button
+              type="button"
+              id="toggle-multi-select"
+              class="icon-button top-bar__icon-button"
+              aria-pressed="false"
+              aria-label="Ativar seleção múltipla"
+              title="Ativar seleção múltipla"
             >
-              <use
-                href="assets/icons/ui-icons.svg#icon-multi-select"
-                xlink:href="assets/icons/ui-icons.svg#icon-multi-select"
-              ></use>
-            </svg>
-            <span class="visually-hidden">Ativar seleção múltipla</span>
-          </button>
-          <span id="selection-summary">Nenhum horário selecionado.</span>
+              <svg
+                class="icon icon--toolbar"
+                aria-hidden="true"
+                focusable="false"
+                xmlns:xlink="http://www.w3.org/1999/xlink"
+              >
+                <use
+                  href="assets/icons/ui-icons.svg#icon-multi-select"
+                  xlink:href="assets/icons/ui-icons.svg#icon-multi-select"
+                ></use>
+              </svg>
+              <span class="visually-hidden">Ativar seleção múltipla</span>
+            </button>
+            <span
+              id="selection-count"
+              class="selection-count"
+              aria-live="polite"
+              aria-label="Nenhum horário selecionado"
+            >
+              0
+            </span>
+          </div>
           <div class="selection-actions">
             <button
               type="button"
