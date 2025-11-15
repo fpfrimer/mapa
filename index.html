@@ -131,10 +131,11 @@
               <option value="period">Período</option>
               <option value="professor">Docente</option>
               <option value="room">Sala</option>
+              <option value="free">Horário livre</option>
             </select>
           </div>
 
-          <div class="top-bar__section">
+          <div class="top-bar__section" id="entity-selector-section">
             <label class="control-label" for="entity-selector-search">Selecionar:</label>
             <div class="searchable-select" data-select="entity-selector">
               <div class="searchable-input-wrapper">
@@ -154,6 +155,29 @@
             <select id="entity-selector" class="searchable-native">
               <option value=""></option>
             </select>
+          </div>
+
+          <div class="top-bar__section" id="free-time-selector" hidden>
+            <label class="control-label" for="free-time-selector-search">Docentes:</label>
+            <div class="searchable-select" data-select="free-time-professor-selector">
+              <div class="searchable-input-wrapper">
+                <input
+                  type="search"
+                  id="free-time-selector-search"
+                  class="searchable-input"
+                  placeholder="Buscar docente"
+                  autocomplete="off"
+                />
+                <button type="button" class="searchable-toggle" aria-label="Exibir itens">
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <ul class="searchable-options" role="listbox"></ul>
+            </div>
+            <select id="free-time-professor-selector" class="searchable-native">
+              <option value=""></option>
+            </select>
+            <ul id="free-time-professor-list" class="chip-list"></ul>
           </div>
         </div>
         <div class="top-bar__divider" aria-hidden="true"></div>
