@@ -1582,7 +1582,7 @@ body.top-bar-drawer-open {
 }
 
 .top-bar__project {
-  flex: 1 1 180px;
+  flex: 0 0 auto;
   min-width: 150px;
   display: flex;
   align-items: center;
@@ -1593,7 +1593,7 @@ body.top-bar-drawer-open {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem 0.5rem;
-  flex: 2 1 320px;
+  flex: 0 0 auto;
   min-width: min(280px, 100%);
 }
 
@@ -1609,7 +1609,7 @@ body.top-bar-drawer-open {
 }
 
 .top-bar__selection {
-  flex: 1 1 220px;
+  flex: 0 0 auto;
   min-width: min(200px, 100%);
   display: flex;
   align-items: center;
@@ -1762,6 +1762,7 @@ body.theme-dark .top-bar__icon-button.is-active {
   gap: 0.35rem;
   flex: 0 1 160px;
   min-width: 120px;
+  margin-left: auto;
 }
 
 .top-bar__session-control {
