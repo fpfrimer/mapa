@@ -6043,6 +6043,21 @@ function setupTopBarResponsiveControls() {
   const COMPACT_CLASS = 'top-bar--compact';
   const OPEN_CLASS = 'top-bar--drawer-open';
   const MEASURING_CLASS = 'top-bar--measuring';
+  const COMPACT_BREAKPOINT = 1100;
+  const compactViewportQuery =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(`(max-width: ${COMPACT_BREAKPOINT}px)`)
+      : null;
+
+  const isCompactViewport = () => {
+    if (compactViewportQuery && typeof compactViewportQuery.matches === 'boolean') {
+      return compactViewportQuery.matches;
+    }
+    if (typeof window !== 'undefined' && typeof window.innerWidth === 'number') {
+      return window.innerWidth <= COMPACT_BREAKPOINT;
+    }
+    return true;
+  };
 
   const setDrawerHiddenState = (hidden) => {
     if (!topBarDrawer) return;
@@ -6103,6 +6118,9 @@ function setupTopBarResponsiveControls() {
   };
 
   const hasWrappedContent = () => {
+    if (!isCompactViewport()) {
+      return false;
+    }
     const children = Array.from(primary.children).filter((child) => {
       if (!child || child.offsetParent === null) {
         return false;
@@ -6132,8 +6150,11 @@ function setupTopBarResponsiveControls() {
       return true;
     }
 
+    const parentWidth = topBar.parentElement && Number.isFinite(topBar.parentElement.clientWidth) ? topBar.parentElement.clientWidth : 0;
+    const topBarWidth = Number.isFinite(topBar.offsetWidth) ? topBar.offsetWidth : 0;
     const drawerRect = topBarDrawer.getBoundingClientRect();
-    const availableWidth = Number.isFinite(drawerRect.width) && drawerRect.width > 0 ? drawerRect.width : topBarDrawer.offsetWidth;
+    const drawerWidth = Number.isFinite(drawerRect.width) && drawerRect.width > 0 ? drawerRect.width : topBarDrawer.offsetWidth;
+    const availableWidth = Math.max(parentWidth, topBarWidth, drawerWidth, 0);
     if (!availableWidth) {
       return false;
     }
@@ -6202,6 +6223,15 @@ function setupTopBarResponsiveControls() {
     observer.observe(topBar);
   }
   window.addEventListener('resize', resizeCallback);
+
+  if (compactViewportQuery) {
+    const mediaQueryCallback = () => window.requestAnimationFrame(evaluateOverflow);
+    if (typeof compactViewportQuery.addEventListener === 'function') {
+      compactViewportQuery.addEventListener('change', mediaQueryCallback);
+    } else if (typeof compactViewportQuery.addListener === 'function') {
+      compactViewportQuery.addListener(mediaQueryCallback);
+    }
+  }
 
   evaluateOverflow();
 }
