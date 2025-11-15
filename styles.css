@@ -1476,7 +1476,7 @@ body.theme-dark .top-bar--compact.top-bar--drawer-open .top-bar__drawer {
   margin: 0;
 }
 
-.top-bar__drawer-backdrop {
+.top-bar .top-bar__drawer-backdrop {
   display: none;
   position: fixed;
   inset: 0;
@@ -1486,7 +1486,7 @@ body.theme-dark .top-bar--compact.top-bar--drawer-open .top-bar__drawer {
   pointer-events: none;
 }
 
-body.top-bar-drawer-open .top-bar__drawer-backdrop {
+body.top-bar-drawer-open .top-bar .top-bar__drawer-backdrop {
   display: block;
   pointer-events: auto;
 }
