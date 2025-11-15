@@ -6101,23 +6101,42 @@ function setupTopBarResponsiveControls() {
   };
 
   const hasWrappedContent = () => {
-    const children = Array.from(primary.children).filter((child) => child && child.offsetParent !== null);
-    if (!children.length) {
-      return false;
-    }
-    const firstTop = Math.min(
-      ...children.map((child) => {
-        const rect = child.getBoundingClientRect();
-        return Number.isFinite(rect.top) ? rect.top : 0;
-      })
-    );
-    return children.some((child) => {
-      const rect = child.getBoundingClientRect();
-      if (!Number.isFinite(rect.top)) {
+    const children = Array.from(primary.children).filter((child) => {
+      if (!child || child.offsetParent === null) {
         return false;
       }
-      return rect.top - firstTop > 4;
+      return !child.classList.contains('top-bar__divider');
     });
+    if (children.length <= 1) {
+      return false;
+    }
+
+    const rowPositions = [];
+    children.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      if (!Number.isFinite(rect.top)) {
+        return;
+      }
+      rowPositions.push(Math.round(rect.top));
+    });
+
+    if (!rowPositions.length) {
+      return false;
+    }
+
+    const firstTop = Math.min(...rowPositions);
+    const wrappedByPosition = rowPositions.some((top) => top - firstTop > 2);
+    if (wrappedByPosition) {
+      return true;
+    }
+
+    const drawerRect = topBarDrawer.getBoundingClientRect();
+    const availableWidth = Number.isFinite(drawerRect.width) && drawerRect.width > 0 ? drawerRect.width : topBarDrawer.offsetWidth;
+    if (!availableWidth) {
+      return false;
+    }
+    const contentWidth = primary.scrollWidth;
+    return contentWidth - availableWidth > 1;
   };
 
   const evaluateOverflow = () => {
