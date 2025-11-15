@@ -1435,6 +1435,7 @@ function normalizeRequiredSlots(value) {
 }
 
 let latestDisciplineUsage = {};
+let latestFreeTimeMatrix = null;
 
 function computeDisciplineUsage() {
   const counts = new Map();
@@ -1497,17 +1498,14 @@ function sortAllCollections() {
 
 function buildScheduleHeading() {
   if (state.view === 'free') {
-    if (state.freeTimeProfessorIds.length > 1) {
-      return 'Horários livres dos docentes selecionados';
+    const names = state.freeTimeProfessorIds
+      .map((id) => getProfessorById(id)?.name)
+      .filter(Boolean);
+    if (names.length) {
+      const label = names.join(', ');
+      return `Horário livre · ${label}`;
     }
-    if (state.freeTimeProfessorIds.length === 1) {
-      const professor = getProfessorById(state.freeTimeProfessorIds[0]);
-      if (professor) {
-        return `Horários livres de ${professor.name}`;
-      }
-      return 'Horários livres do docente selecionado';
-    }
-    return 'Horários livres';
+    return 'Horário livre';
   }
 
   if (!state.selectedEntity) {
@@ -2676,7 +2674,8 @@ function getSelectionDescription(count) {
 
 function updateSelectionUI() {
   const { toggleMultiSelect, selectionCount, editSelection, clearSelection } = elements;
-  const editingLocked = isEditingLocked();
+  const freeViewActive = state.view === 'free';
+  const editingLocked = freeViewActive || isEditingLocked();
   if (editingLocked && state.multiSelectMode) {
     state.multiSelectMode = false;
   }
@@ -2733,6 +2732,9 @@ function clearSelectedSlots(options = {}) {
 }
 
 function toggleSlotSelection(dayKey, slotCode, button) {
+  if (state.view === 'free') {
+    return;
+  }
   if (isEditingLocked()) {
     ensureAuthForEditing();
     return;
@@ -2755,6 +2757,9 @@ function toggleSlotSelection(dayKey, slotCode, button) {
 }
 
 function handleSlotClick(button, dayKey, slotCode) {
+  if (state.view === 'free') {
+    return;
+  }
   if (suppressedSlotClickButtons.has(button)) {
     suppressedSlotClickButtons.delete(button);
     return;
@@ -2782,6 +2787,7 @@ function detachSlotPointerHandlers(button) {
 }
 
 function onSlotPointerDown(event, button, dayKey, slotCode) {
+  if (state.view === 'free') return;
   if (!button || typeof event?.button !== 'number') return;
   if (event.button !== 0) return;
   if (isEditingLocked()) return;
@@ -3068,6 +3074,70 @@ function getAssignmentsForSlot(key) {
   return results;
 }
 
+function getFreeTimeSlotStatus(dayKey, slotCode, professorIds) {
+  const key = slotKey(dayKey, slotCode);
+  const selection = Array.isArray(professorIds)
+    ? professorIds.filter((id) => typeof id === 'string' && id)
+    : [];
+  const selectionSet = new Set(selection);
+  const assignments = getAssignmentsForSlot(key);
+  const busyProfessorIds = new Set();
+  const conflictDetails = [];
+
+  assignments.forEach(({ periodId, data }) => {
+    const professorId = data?.professorId;
+    if (!professorId || !selectionSet.has(professorId)) return;
+    busyProfessorIds.add(professorId);
+    const professor = getProfessorById(professorId);
+    const discipline = getDisciplineById(data?.disciplineId);
+    const period = getPeriodById(periodId);
+    conflictDetails.push({
+      professorId,
+      professorName: professor?.name || 'Docente não identificado',
+      disciplineLabel: discipline ? formatDisciplineLabel(discipline) : 'Disciplina não informada',
+      periodName: period?.name || 'Período não informado'
+    });
+  });
+
+  const freeProfessorIds = selection.filter((id) => !busyProfessorIds.has(id));
+  const conflictLines = conflictDetails.map((detail) => {
+    const segments = [];
+    if (detail.disciplineLabel) {
+      segments.push(detail.disciplineLabel);
+    }
+    if (detail.periodName) {
+      segments.push(`Período ${detail.periodName}`);
+    }
+    const detailsText = segments.length ? ` — ${segments.join(' • ')}` : '';
+    return `${detail.professorName}${detailsText}`;
+  });
+
+  let tooltip = 'Nenhum docente selecionado.';
+  if (selection.length) {
+    tooltip = conflictLines.length
+      ? conflictLines.join('\n')
+      : 'Todos os docentes selecionados estão livres.';
+  }
+
+  const slotLabel = formatSlotLabel(dayKey, slotCode);
+  const ariaLabel = conflictLines.length
+    ? `${slotLabel}. Conflitos neste horário: ${conflictLines.join('. ')}`
+    : `${slotLabel}. Todos os docentes selecionados estão livres.`;
+
+  return {
+    key,
+    dayKey,
+    slotCode,
+    allFree: selection.length > 0 && conflictLines.length === 0,
+    hasConflict: conflictLines.length > 0,
+    freeProfessorIds,
+    busyProfessorIds: Array.from(busyProfessorIds),
+    conflicts: conflictDetails,
+    tooltip,
+    ariaLabel
+  };
+}
+
 function findAssignmentByProfessor(professorId, key) {
   for (const [periodId, slots] of Object.entries(state.schedule)) {
     const data = slots[key];
@@ -3258,14 +3328,86 @@ function getDraggableAssignmentInfo(assignments) {
   return valid[0];
 }
 
+function buildFreeSlotStatusContent(status, totalSelected) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'slot-free-status';
+
+  if (!status || !totalSelected) {
+    wrapper.textContent = 'Sem seleção';
+    return wrapper;
+  }
+
+  let labelText = '';
+  let detailText = '';
+
+  if (status.allFree) {
+    labelText = totalSelected > 1 ? 'Todos livres' : 'Livre';
+  } else {
+    const freeCount = status.freeProfessorIds?.length || 0;
+    const busyCount = status.busyProfessorIds?.length || 0;
+    if (!freeCount) {
+      labelText = totalSelected > 1 ? 'Todos ocupados' : 'Ocupado';
+      detailText = busyCount ? `${busyCount} em conflito` : '';
+    } else {
+      labelText = `${freeCount} de ${totalSelected} livre${freeCount === 1 ? '' : 's'}`;
+      detailText = busyCount ? `${busyCount} em conflito` : '';
+    }
+  }
+
+  const label = document.createElement('span');
+  label.className = 'slot-free-status__label';
+  label.textContent = labelText;
+  wrapper.appendChild(label);
+
+  if (detailText) {
+    const detail = document.createElement('span');
+    detail.className = 'slot-free-status__detail';
+    detail.textContent = detailText;
+    wrapper.appendChild(detail);
+  }
+
+  return wrapper;
+}
+
+function applyFreeSlotStatus(button, status, totalSelected) {
+  if (!button) return;
+  button.classList.add('slot-cell--free-view');
+  button.classList.toggle('slot-cell--free-all', Boolean(status?.allFree));
+  button.classList.toggle('slot-cell--conflict', Boolean(status?.hasConflict));
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-disabled', 'true');
+  button.innerHTML = '';
+  const content = buildFreeSlotStatusContent(status, totalSelected);
+  if (content) {
+    button.appendChild(content);
+  }
+  if (status?.tooltip) {
+    button.title = status.tooltip;
+  } else {
+    button.removeAttribute('title');
+  }
+  if (status?.ariaLabel) {
+    button.setAttribute('aria-label', status.ariaLabel);
+  } else {
+    button.removeAttribute('aria-label');
+  }
+}
+
 function renderSchedule() {
   const { scheduleContainer } = elements;
   clearRelatedHighlights();
   scheduleContainer.innerHTML = '';
   updateScheduleTitle();
   const isFreeView = state.view === 'free';
+  if (isFreeView) {
+    const changed = ensureFreeTimeProfessorSelectionIntegrity();
+    if (changed) {
+      persistState();
+    }
+  }
   const hasSelection = isFreeView ? state.freeTimeProfessorIds.length > 0 : Boolean(state.selectedEntity);
   if (!hasSelection) {
+    latestFreeTimeMatrix = null;
     renderViewSummary();
     const placeholderText = isFreeView
       ? 'Selecione pelo menos um docente para verificar horários livres.'
@@ -3275,8 +3417,15 @@ function renderSchedule() {
     return;
   }
 
-  computeDisciplineUsage();
-  const editingLocked = isEditingLocked();
+  const freeViewProfessorIds = isFreeView ? state.freeTimeProfessorIds.slice() : [];
+  const freeViewStatusByKey = isFreeView ? new Map() : null;
+  let freeViewFullyFreeCount = 0;
+  let freeViewSlotCount = 0;
+
+  if (!isFreeView) {
+    computeDisciplineUsage();
+  }
+  const editingLocked = isFreeView ? true : isEditingLocked();
 
   const table = document.createElement('table');
   table.className = 'schedule-table';
@@ -3316,56 +3465,76 @@ function renderSchedule() {
         button.dataset.day = day.key;
         button.dataset.slot = slot.code;
         const key = slotKey(day.key, slot.code);
-        const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
-        const draggableInfo = getDraggableAssignmentInfo(assignments);
-        const cellContent = buildCellContent(assignments, state.view);
-        const disciplineIds = assignments
-          .map((entry) => entry?.data?.disciplineId)
-          .filter(Boolean);
-        const uniqueDisciplineIds = [...new Set(disciplineIds)];
-        if (uniqueDisciplineIds.length) {
-          button.dataset.disciplineIds = uniqueDisciplineIds.join(',');
-          const handleHighlight = () => highlightRelatedDisciplines(uniqueDisciplineIds, button);
-          button.addEventListener('mouseenter', handleHighlight);
-          button.addEventListener('focus', handleHighlight);
-          button.addEventListener('mouseleave', clearRelatedHighlights);
-          button.addEventListener('blur', clearRelatedHighlights);
+        if (isFreeView) {
+          const status = getFreeTimeSlotStatus(day.key, slot.code, freeViewProfessorIds);
+          freeViewStatusByKey.set(key, status);
+          freeViewSlotCount += 1;
+          if (status?.allFree) {
+            freeViewFullyFreeCount += 1;
+          }
+          applyFreeSlotStatus(button, status, freeViewProfessorIds.length);
         } else {
-          delete button.dataset.disciplineIds;
+          const assignments = getCellAssignments(state.view, state.selectedEntity, day.key, slot.code);
+          const draggableInfo = getDraggableAssignmentInfo(assignments);
+          const cellContent = buildCellContent(assignments, state.view);
+          const disciplineIds = assignments
+            .map((entry) => entry?.data?.disciplineId)
+            .filter(Boolean);
+          const uniqueDisciplineIds = [...new Set(disciplineIds)];
+          if (uniqueDisciplineIds.length) {
+            button.dataset.disciplineIds = uniqueDisciplineIds.join(',');
+            const handleHighlight = () => highlightRelatedDisciplines(uniqueDisciplineIds, button);
+            button.addEventListener('mouseenter', handleHighlight);
+            button.addEventListener('focus', handleHighlight);
+            button.addEventListener('mouseleave', clearRelatedHighlights);
+            button.addEventListener('blur', clearRelatedHighlights);
+          } else {
+            delete button.dataset.disciplineIds;
+          }
+          button.innerHTML = cellContent.html;
+          if (cellContent.errors.length) {
+            button.classList.add('has-error');
+            button.title = cellContent.errors.map((error) => `• ${error}`).join('\n');
+          } else {
+            button.classList.remove('has-error');
+            button.removeAttribute('title');
+          }
+          if (draggableInfo && !editingLocked) {
+            button.classList.add('is-draggable');
+          } else {
+            button.classList.remove('is-draggable');
+          }
+          button.classList.toggle('slot-cell--locked', editingLocked);
+          if (state.selectedSlots.has(key)) {
+            button.classList.add('selected');
+            button.setAttribute('aria-pressed', 'true');
+          } else {
+            button.setAttribute('aria-pressed', 'false');
+          }
+          button.addEventListener('click', (event) => {
+            handleSlotClick(event.currentTarget, day.key, slot.code);
+          });
+          setupSlotDrag(button, day.key, slot.code);
         }
-        button.innerHTML = cellContent.html;
-        if (cellContent.errors.length) {
-          button.classList.add('has-error');
-          button.title = cellContent.errors.map((error) => `• ${error}`).join('\n');
-        } else {
-          button.classList.remove('has-error');
-          button.removeAttribute('title');
-        }
-        if (draggableInfo && !editingLocked) {
-          button.classList.add('is-draggable');
-        } else {
-          button.classList.remove('is-draggable');
-        }
-        button.classList.toggle('slot-cell--locked', editingLocked);
-        if (state.selectedSlots.has(key)) {
-          button.classList.add('selected');
-          button.setAttribute('aria-pressed', 'true');
-        } else {
-          button.setAttribute('aria-pressed', 'false');
-        }
-        button.addEventListener('click', (event) => {
-          handleSlotClick(event.currentTarget, day.key, slot.code);
-        });
-        setupSlotDrag(button, day.key, slot.code);
         cell.appendChild(button);
         row.appendChild(cell);
       });
       tbody.appendChild(row);
     });
   });
-  
+
   table.appendChild(tbody);
   scheduleContainer.appendChild(table);
+  if (isFreeView) {
+    latestFreeTimeMatrix = {
+      professorIds: freeViewProfessorIds,
+      statusByKey: freeViewStatusByKey,
+      fullyFree: freeViewFullyFreeCount,
+      totalSlots: freeViewSlotCount
+    };
+  } else {
+    latestFreeTimeMatrix = null;
+  }
   updateSelectionUI();
   renderViewSummary();
 }
@@ -3441,11 +3610,23 @@ function renderViewSummary() {
   container.classList.remove('has-content', 'is-empty');
 
   if (state.view === 'free') {
-    container.classList.add('is-empty');
-    const message = state.freeTimeProfessorIds.length
-      ? 'Resumo indisponível para a visualização de horários livres.'
-      : 'Selecione docentes para visualizar horários livres.';
-    container.appendChild(createSummaryPlaceholder(message));
+    if (!state.freeTimeProfessorIds.length) {
+      container.classList.add('is-empty');
+      container.appendChild(
+        createSummaryPlaceholder('Selecione docentes para visualizar horários livres.')
+      );
+      return;
+    }
+    const fragment = buildFreeTimeSummary();
+    if (fragment) {
+      container.classList.add('has-content');
+      container.appendChild(fragment);
+    } else {
+      container.classList.add('is-empty');
+      container.appendChild(
+        createSummaryPlaceholder('Não foi possível gerar o resumo de horários livres.')
+      );
+    }
     return;
   }
 
@@ -3473,6 +3654,81 @@ function renderViewSummary() {
     container.classList.add('is-empty');
     container.appendChild(createSummaryPlaceholder('Nenhum dado disponível para esta visualização.'));
   }
+}
+
+function buildFreeTimeSummary() {
+  const snapshot = latestFreeTimeMatrix;
+  if (!snapshot || !snapshot.professorIds?.length) {
+    return null;
+  }
+
+  const professors = snapshot.professorIds
+    .map((id) => getProfessorById(id))
+    .filter(Boolean);
+  if (!professors.length) {
+    return null;
+  }
+
+  const fragment = document.createDocumentFragment();
+  const title = document.createElement('h3');
+  title.className = 'summary-title';
+  title.textContent = 'Docentes selecionados';
+  fragment.appendChild(title);
+
+  const highlight = document.createElement('p');
+  highlight.className = 'summary-highlight';
+  if (snapshot.totalSlots > 0) {
+    highlight.innerHTML = `<strong>Blocos livres em comum:</strong> ${snapshot.fullyFree} de ${snapshot.totalSlots}`;
+  } else {
+    highlight.textContent = 'Nenhum horário encontrado na grade atual.';
+  }
+  fragment.appendChild(highlight);
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+  professors.forEach((professor) => {
+    const item = document.createElement('li');
+    item.className = 'summary-item';
+    const header = document.createElement('div');
+    header.className = 'summary-item-header';
+    const name = document.createElement('span');
+    name.className = 'summary-item-title';
+    name.textContent = professor.name;
+    header.appendChild(name);
+    item.appendChild(header);
+    list.appendChild(item);
+  });
+  fragment.appendChild(list);
+
+  const legend = buildFreeTimeLegend();
+  if (legend) {
+    fragment.appendChild(legend);
+  }
+
+  return fragment;
+}
+
+function buildFreeTimeLegend() {
+  const legend = document.createElement('div');
+  legend.className = 'free-time-legend';
+
+  const freeItem = document.createElement('span');
+  freeItem.className = 'free-time-legend__item';
+  const freeSwatch = document.createElement('span');
+  freeSwatch.className = 'free-time-legend__swatch free-time-legend__swatch--free';
+  freeItem.appendChild(freeSwatch);
+  freeItem.appendChild(document.createTextNode('Livre para todos'));
+  legend.appendChild(freeItem);
+
+  const conflictItem = document.createElement('span');
+  conflictItem.className = 'free-time-legend__item';
+  const conflictSwatch = document.createElement('span');
+  conflictSwatch.className = 'free-time-legend__swatch free-time-legend__swatch--conflict';
+  conflictItem.appendChild(conflictSwatch);
+  conflictItem.appendChild(document.createTextNode('Conflitos detectados'));
+  legend.appendChild(conflictItem);
+
+  return legend;
 }
 
 function buildPeriodSummary(periodId) {
@@ -6167,6 +6423,7 @@ function bindSelectionControls() {
 
   if (toggleMultiSelect) {
     toggleMultiSelect.addEventListener('click', () => {
+      if (state.view === 'free') return;
       if (!ensureAuthForEditing()) return;
       state.multiSelectMode = !state.multiSelectMode;
       updateSelectionUI();
@@ -6175,6 +6432,7 @@ function bindSelectionControls() {
 
   if (editSelection) {
     editSelection.addEventListener('click', () => {
+      if (state.view === 'free') return;
       if (!ensureAuthForEditing()) return;
       if (!state.selectedEntity) {
         alert('Selecione um item para editar o horário.');
@@ -6191,6 +6449,7 @@ function bindSelectionControls() {
 
   if (clearSelection) {
     clearSelection.addEventListener('click', () => {
+      if (state.view === 'free') return;
       if (!ensureAuthForEditing()) return;
       if (!state.selectedSlots.size) return;
       clearSelectedSlots({ preserveMode: true });
