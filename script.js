@@ -6,6 +6,7 @@ const state = {
   schedule: {}, // periodId -> { slotKey: { disciplineId, professorId, roomId } }
   view: 'period',
   selectedEntity: '',
+  freeTimeProfessorIds: [],
   assignmentEditing: null,
   entityEditing: null,
   multiSelectMode: false,
@@ -402,7 +403,16 @@ function getProfessorDetailParts(professor) {
 
 function formatProfessorOptionLabel(professor) {
   if (!professor) return '';
-  return professor.name || '';
+  const baseName = professor.name || '';
+  const details = [];
+  const disciplineLabels = getProfessorDisciplineLabels(professor);
+  if (disciplineLabels.length) {
+    details.push(disciplineLabels.join(', '));
+  }
+  if (professor.isCourseArea) {
+    details.push('Área do curso');
+  }
+  return details.length ? `${baseName} • ${details.join(', ')}` : baseName;
 }
 
 const days = [
@@ -576,7 +586,11 @@ const elements = {
   disciplinePeriodFilter: document.getElementById('discipline-filter-period'),
   roomPeriodFilter: document.getElementById('room-filter-period'),
   viewTypeSelect: document.getElementById('view-type'),
+  entitySelectorSection: document.getElementById('entity-selector-section'),
   entitySelector: document.getElementById('entity-selector'),
+  freeTimeSelectorSection: document.getElementById('free-time-selector'),
+  freeTimeProfessorSelect: document.getElementById('free-time-professor-selector'),
+  freeTimeProfessorList: document.getElementById('free-time-professor-list'),
   scheduleContainer: document.getElementById('schedule-container'),
   scheduleTitle: document.getElementById('schedule-title'),
   toggleMultiSelect: document.getElementById('toggle-multi-select'),
@@ -1482,6 +1496,20 @@ function sortAllCollections() {
 }
 
 function buildScheduleHeading() {
+  if (state.view === 'free') {
+    if (state.freeTimeProfessorIds.length > 1) {
+      return 'Horários livres dos docentes selecionados';
+    }
+    if (state.freeTimeProfessorIds.length === 1) {
+      const professor = getProfessorById(state.freeTimeProfessorIds[0]);
+      if (professor) {
+        return `Horários livres de ${professor.name}`;
+      }
+      return 'Horários livres do docente selecionado';
+    }
+    return 'Horários livres';
+  }
+
   if (!state.selectedEntity) {
     return 'Selecione um item para visualizar o cronograma';
   }
@@ -1513,7 +1541,8 @@ function updateScheduleTitle() {
   const heading = buildScheduleHeading();
   scheduleTitle.textContent = heading;
 
-  const isPlaceholder = !state.selectedEntity;
+  const hasSelection = state.view === 'free' ? state.freeTimeProfessorIds.length > 0 : !!state.selectedEntity;
+  const isPlaceholder = !hasSelection;
   scheduleTitle.classList.toggle('is-muted', isPlaceholder);
 }
 
@@ -2045,6 +2074,106 @@ function setupProfessorFormControls() {
   renderProfessorFormDisciplineChips();
 }
 
+function sanitizeFreeTimeProfessorSelection(list) {
+  const values = Array.isArray(list) ? list : [];
+  const seen = new Set();
+  const valid = [];
+  values.forEach((rawId) => {
+    const id = typeof rawId === 'string' ? rawId.trim() : '';
+    if (!id || seen.has(id)) return;
+    const exists = state.professors.some((professor) => professor?.id === id);
+    if (!exists) return;
+    seen.add(id);
+    valid.push(id);
+  });
+  return valid;
+}
+
+function ensureFreeTimeProfessorSelectionIntegrity() {
+  const sanitized = sanitizeFreeTimeProfessorSelection(state.freeTimeProfessorIds);
+  const changed = sanitized.length !== state.freeTimeProfessorIds.length;
+  if (changed) {
+    state.freeTimeProfessorIds = sanitized;
+  }
+  return changed;
+}
+
+function renderFreeTimeProfessorChips() {
+  const { freeTimeProfessorList } = elements;
+  if (!freeTimeProfessorList) return;
+  const changed = ensureFreeTimeProfessorSelectionIntegrity();
+  if (changed) {
+    persistState();
+  }
+  freeTimeProfessorList.innerHTML = '';
+  if (!state.freeTimeProfessorIds.length) {
+    return;
+  }
+  const sorted = state.freeTimeProfessorIds
+    .map((id) => ({ id, professor: getProfessorById(id) }))
+    .filter(({ professor }) => Boolean(professor))
+    .sort((a, b) => normalizeText(a.professor.name).localeCompare(normalizeText(b.professor.name)));
+  sorted.forEach(({ id, professor }) => {
+    const li = document.createElement('li');
+    li.className = 'chip-item';
+    const text = document.createElement('span');
+    text.textContent = formatProfessorOptionLabel(professor);
+    li.appendChild(text);
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'icon-button small danger chip-remove';
+    removeButton.dataset.professorId = id;
+    removeButton.title = 'Remover docente';
+    removeButton.setAttribute('aria-label', 'Remover docente');
+    const icon = createIcon('icon-remove', 'icon--small');
+    if (icon) {
+      removeButton.appendChild(icon);
+    }
+    removeButton.appendChild(createVisuallyHiddenText('Remover docente'));
+    li.appendChild(removeButton);
+    freeTimeProfessorList.appendChild(li);
+  });
+}
+
+function updateFreeTimeSelectorOptions() {
+  const { freeTimeProfessorSelect } = elements;
+  if (!freeTimeProfessorSelect) return;
+  const currentValue = freeTimeProfessorSelect.value;
+  freeTimeProfessorSelect.innerHTML = '<option value=""></option>';
+  state.professors.forEach((professor) => {
+    const option = document.createElement('option');
+    option.value = professor.id;
+    option.textContent = formatProfessorOptionLabel(professor);
+    freeTimeProfessorSelect.appendChild(option);
+  });
+  syncSearchableDropdownOptions(freeTimeProfessorSelect);
+  const nextValue = state.professors.some((professor) => professor.id === currentValue) ? currentValue : '';
+  updateSearchableDropdownValue(freeTimeProfessorSelect, nextValue);
+}
+
+function addFreeTimeProfessorId(professorId) {
+  const id = typeof professorId === 'string' ? professorId.trim() : '';
+  if (!id) return;
+  const exists = state.professors.some((professor) => professor?.id === id);
+  if (!exists) return;
+  if (state.freeTimeProfessorIds.includes(id)) return;
+  state.freeTimeProfessorIds = [...state.freeTimeProfessorIds, id];
+  renderFreeTimeProfessorChips();
+  renderSchedule();
+  persistState();
+}
+
+function removeFreeTimeProfessorId(professorId) {
+  const id = typeof professorId === 'string' ? professorId.trim() : '';
+  if (!id) return;
+  const next = state.freeTimeProfessorIds.filter((value) => value !== id);
+  if (next.length === state.freeTimeProfessorIds.length) return;
+  state.freeTimeProfessorIds = next;
+  renderFreeTimeProfessorChips();
+  renderSchedule();
+  persistState();
+}
+
 function openManagementPanel(panelKey) {
   const { managementPanel, panelTitle } = elements;
   if (!managementPanel) return;
@@ -2137,6 +2266,8 @@ function refreshLists() {
   updateDisciplinePeriodOptions();
   updateProfessorDisciplineOptions();
   updateDisciplineColorSuggestion();
+  updateFreeTimeSelectorOptions();
+  renderFreeTimeProfessorChips();
 }
 
 function startEntityEditing(type, id) {
@@ -2419,7 +2550,28 @@ function updateProfessorDisciplineOptions() {
 }
 
 function updateEntitySelector() {
-  const { entitySelector } = elements;
+  const { entitySelector, entitySelectorSection, freeTimeSelectorSection } = elements;
+  const isFreeView = state.view === 'free';
+  if (entitySelectorSection) {
+    entitySelectorSection.hidden = isFreeView;
+  }
+  if (freeTimeSelectorSection) {
+    freeTimeSelectorSection.hidden = !isFreeView;
+  }
+  if (isFreeView) {
+    if (state.selectedEntity) {
+      state.selectedEntity = '';
+    }
+    clearSelectedSlots();
+    updateFreeTimeSelectorOptions();
+    renderFreeTimeProfessorChips();
+    renderSchedule();
+    return;
+  }
+  if (!entitySelector) {
+    renderSchedule();
+    return;
+  }
   entitySelector.innerHTML = '<option value=""></option>';
   let source = [];
   if (state.view === 'period') source = state.periods;
@@ -3111,9 +3263,14 @@ function renderSchedule() {
   clearRelatedHighlights();
   scheduleContainer.innerHTML = '';
   updateScheduleTitle();
-  if (!state.selectedEntity) {
+  const isFreeView = state.view === 'free';
+  const hasSelection = isFreeView ? state.freeTimeProfessorIds.length > 0 : Boolean(state.selectedEntity);
+  if (!hasSelection) {
     renderViewSummary();
-    scheduleContainer.innerHTML = '<p class="placeholder">Cadastre e selecione um item para visualizar o mapa de horários.</p>';
+    const placeholderText = isFreeView
+      ? 'Selecione pelo menos um docente para verificar horários livres.'
+      : 'Cadastre e selecione um item para visualizar o mapa de horários.';
+    scheduleContainer.innerHTML = `<p class="placeholder">${placeholderText}</p>`;
     updateSelectionUI();
     return;
   }
@@ -3282,6 +3439,15 @@ function renderViewSummary() {
   if (!container) return;
   container.innerHTML = '';
   container.classList.remove('has-content', 'is-empty');
+
+  if (state.view === 'free') {
+    container.classList.add('is-empty');
+    const message = state.freeTimeProfessorIds.length
+      ? 'Resumo indisponível para a visualização de horários livres.'
+      : 'Selecione docentes para visualizar horários livres.';
+    container.appendChild(createSummaryPlaceholder(message));
+    return;
+  }
 
   if (!state.selectedEntity) {
     container.classList.add('is-empty');
@@ -5593,7 +5759,8 @@ function getPersistableSnapshot() {
     disciplines: state.disciplines,
     schedule: state.schedule,
     view: state.view,
-    selectedEntity: state.selectedEntity
+    selectedEntity: state.selectedEntity,
+    freeTimeProfessorIds: state.freeTimeProfessorIds
   };
 }
 
@@ -5656,6 +5823,7 @@ function applyStateFromData(data) {
   state.schedule = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
   state.view = data.view || 'period';
   state.selectedEntity = data.selectedEntity || '';
+  state.freeTimeProfessorIds = sanitizeFreeTimeProfessorSelection(data.freeTimeProfessorIds);
   state.assignmentEditing = null;
   state.entityEditing = null;
   state.selectedSlots = new Set();
@@ -5669,6 +5837,7 @@ function applyStateFromData(data) {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
+  renderFreeTimeProfessorChips();
   ensureDisciplineColors();
   sortAllCollections();
   refreshLists();
@@ -5832,6 +6001,7 @@ function resetPlannerState(options = {}) {
   state.schedule = {};
   state.view = 'period';
   state.selectedEntity = '';
+  state.freeTimeProfessorIds = [];
   state.assignmentEditing = null;
   state.entityEditing = null;
   clearSelectedSlots();
@@ -5847,6 +6017,7 @@ function resetPlannerState(options = {}) {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
+  renderFreeTimeProfessorChips();
   resetSearchFilters();
   refreshLists();
   updateEntitySelector();
@@ -6302,6 +6473,26 @@ function setupSearchableDropdowns() {
   registerSearchableDropdown('assignment-professor', { placeholder: 'Buscar docente' });
   registerSearchableDropdown('assignment-room', { placeholder: 'Buscar sala' });
   registerSearchableDropdown('entity-selector', { placeholder: 'Buscar item' });
+  registerSearchableDropdown('free-time-professor-selector', { placeholder: 'Buscar docente' });
+}
+
+function bindFreeTimeSelectionControls() {
+  const { freeTimeProfessorSelect, freeTimeProfessorList } = elements;
+  if (freeTimeProfessorSelect) {
+    freeTimeProfessorSelect.addEventListener('change', (event) => {
+      const value = event.target.value;
+      if (!value) return;
+      addFreeTimeProfessorId(value);
+      updateSearchableDropdownValue(event.target, '');
+    });
+  }
+  if (freeTimeProfessorList) {
+    freeTimeProfessorList.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-professor-id]');
+      if (!button) return;
+      removeFreeTimeProfessorId(button.dataset.professorId);
+    });
+  }
 }
 
 function bindForms() {
@@ -6462,6 +6653,7 @@ async function init() {
   await loadSavedConfigurationsFromServer();
   setupProfessorFormControls();
   setupSearchableDropdowns();
+  bindFreeTimeSelectionControls();
   bindForms();
   bindStorageControls();
   bindProjectControls();
