@@ -539,6 +539,10 @@ const elements = {
   projectSaveButton: document.getElementById('project-save-button'),
   projectTitleName: document.getElementById('project-title-name'),
   projectTitleNameText: document.getElementById('project-title-name-text'),
+  topBar: document.querySelector('.top-bar'),
+  topBarDrawer: document.querySelector('.top-bar__drawer'),
+  topBarCompactToggle: document.getElementById('top-bar-compact-toggle'),
+  topBarBackdrop: document.querySelector('.top-bar__drawer-backdrop'),
   periodForm: document.getElementById('period-form'),
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
@@ -6022,6 +6026,184 @@ function bindSelectionControls() {
   }
 }
 
+function setupTopBarResponsiveControls() {
+  const { topBar, topBarDrawer, topBarCompactToggle, topBarBackdrop } = elements;
+  if (!topBar || !topBarDrawer || !topBarCompactToggle) {
+    return;
+  }
+
+  const primary = topBarDrawer.querySelector('.top-bar__primary');
+  if (!primary) {
+    return;
+  }
+
+  const body = document.body;
+  const COMPACT_CLASS = 'top-bar--compact';
+  const OPEN_CLASS = 'top-bar--drawer-open';
+  const MEASURING_CLASS = 'top-bar--measuring';
+
+  const setDrawerHiddenState = (hidden) => {
+    if (!topBarDrawer) return;
+    if (hidden) {
+      topBarDrawer.setAttribute('aria-hidden', 'true');
+    } else {
+      topBarDrawer.removeAttribute('aria-hidden');
+    }
+  };
+
+  const closeDrawer = () => {
+    if (!topBar.classList.contains(COMPACT_CLASS)) {
+      return;
+    }
+    topBar.classList.remove(OPEN_CLASS);
+    topBarCompactToggle.setAttribute('aria-expanded', 'false');
+    setDrawerHiddenState(true);
+    if (body) {
+      body.classList.remove('top-bar-drawer-open');
+    }
+  };
+
+  const openDrawer = () => {
+    if (!topBar.classList.contains(COMPACT_CLASS)) {
+      return;
+    }
+    topBar.classList.add(OPEN_CLASS);
+    topBarCompactToggle.setAttribute('aria-expanded', 'true');
+    setDrawerHiddenState(false);
+    if (body) {
+      body.classList.add('top-bar-drawer-open');
+    }
+    const focusable = topBarDrawer.querySelector(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable) {
+      focusable.focus({ preventScroll: true });
+    }
+  };
+
+  const applyCompactState = (shouldCompact) => {
+    if (!shouldCompact) {
+      topBar.classList.remove(COMPACT_CLASS, OPEN_CLASS, MEASURING_CLASS);
+      topBarCompactToggle.hidden = true;
+      topBarCompactToggle.setAttribute('aria-expanded', 'false');
+      setDrawerHiddenState(false);
+      if (body) {
+        body.classList.remove('top-bar-drawer-open');
+      }
+      return;
+    }
+
+    topBar.classList.add(COMPACT_CLASS);
+    topBarCompactToggle.hidden = false;
+    if (!topBar.classList.contains(OPEN_CLASS)) {
+      setDrawerHiddenState(true);
+    }
+  };
+
+  const hasWrappedContent = () => {
+    const children = Array.from(primary.children).filter((child) => {
+      if (!child || child.offsetParent === null) {
+        return false;
+      }
+      return !child.classList.contains('top-bar__divider');
+    });
+    if (children.length <= 1) {
+      return false;
+    }
+
+    const rowPositions = [];
+    children.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      if (!Number.isFinite(rect.top)) {
+        return;
+      }
+      rowPositions.push(Math.round(rect.top));
+    });
+
+    if (!rowPositions.length) {
+      return false;
+    }
+
+    const firstTop = Math.min(...rowPositions);
+    const wrappedByPosition = rowPositions.some((top) => top - firstTop > 2);
+    if (wrappedByPosition) {
+      return true;
+    }
+
+    const drawerRect = topBarDrawer.getBoundingClientRect();
+    const availableWidth = Number.isFinite(drawerRect.width) && drawerRect.width > 0 ? drawerRect.width : topBarDrawer.offsetWidth;
+    if (!availableWidth) {
+      return false;
+    }
+    const contentWidth = primary.scrollWidth;
+    return contentWidth - availableWidth > 1;
+  };
+
+  const evaluateOverflow = () => {
+    if (!topBar.isConnected) {
+      return;
+    }
+    let measuring = false;
+    if (topBar.classList.contains(COMPACT_CLASS) && !topBar.classList.contains(OPEN_CLASS)) {
+      measuring = true;
+      topBar.classList.add(MEASURING_CLASS);
+    }
+    const shouldCompact = hasWrappedContent();
+    if (measuring) {
+      topBar.classList.remove(MEASURING_CLASS);
+    }
+    applyCompactState(shouldCompact);
+  };
+
+  const handleToggleClick = () => {
+    if (!topBar.classList.contains(COMPACT_CLASS)) {
+      return;
+    }
+    if (topBar.classList.contains(OPEN_CLASS)) {
+      closeDrawer();
+      topBarCompactToggle.focus();
+    } else {
+      openDrawer();
+    }
+  };
+
+  const handleEscapeKey = (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (!topBar.classList.contains(OPEN_CLASS)) {
+      return;
+    }
+    event.preventDefault();
+    closeDrawer();
+    topBarCompactToggle.focus();
+  };
+
+  setDrawerHiddenState(false);
+  topBarCompactToggle.hidden = true;
+  topBarCompactToggle.setAttribute('aria-expanded', 'false');
+  topBarCompactToggle.addEventListener('click', handleToggleClick);
+  document.addEventListener('keydown', handleEscapeKey);
+  if (topBarBackdrop) {
+    topBarBackdrop.addEventListener('click', () => {
+      closeDrawer();
+      topBarCompactToggle.focus();
+    });
+  }
+
+  const resizeCallback = () => {
+    window.requestAnimationFrame(evaluateOverflow);
+  };
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(resizeCallback);
+    observer.observe(topBar);
+  }
+  window.addEventListener('resize', resizeCallback);
+
+  evaluateOverflow();
+}
+
 function bindSearchFilters() {
   const mappings = [
     ['period', elements.periodSearch],
@@ -6253,6 +6435,7 @@ async function init() {
   bindProjectControls();
   bindManagementPanel();
   bindSelectionControls();
+  setupTopBarResponsiveControls();
   bindSearchFilters();
   resetSearchFilters();
   refreshLists();
