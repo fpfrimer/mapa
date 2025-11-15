@@ -527,6 +527,8 @@ const entityCollections = {
   discipline: 'disciplines'
 };
 
+const topBarElement = document.querySelector('.top-bar');
+
 const elements = {
   projectHub: document.getElementById('project-hub'),
   plannerShell: document.getElementById('planner-shell'),
@@ -539,10 +541,10 @@ const elements = {
   projectSaveButton: document.getElementById('project-save-button'),
   projectTitleName: document.getElementById('project-title-name'),
   projectTitleNameText: document.getElementById('project-title-name-text'),
-  topBar: document.querySelector('.top-bar'),
+  topBar: topBarElement,
   topBarDrawer: document.querySelector('.top-bar__drawer'),
   topBarCompactToggle: document.getElementById('top-bar-compact-toggle'),
-  topBarBackdrop: document.querySelector('.top-bar__drawer-backdrop'),
+  topBarBackdrop: topBarElement ? topBarElement.querySelector('.top-bar__drawer-backdrop') : null,
   periodForm: document.getElementById('period-form'),
   professorForm: document.getElementById('professor-form'),
   roomForm: document.getElementById('room-form'),
