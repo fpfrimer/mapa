@@ -6105,8 +6105,19 @@ function setupTopBarResponsiveControls() {
     if (!children.length) {
       return false;
     }
-    const referenceTop = children[0].offsetTop;
-    return children.some((child) => Math.abs(child.offsetTop - referenceTop) > 2);
+    const firstTop = Math.min(
+      ...children.map((child) => {
+        const rect = child.getBoundingClientRect();
+        return Number.isFinite(rect.top) ? rect.top : 0;
+      })
+    );
+    return children.some((child) => {
+      const rect = child.getBoundingClientRect();
+      if (!Number.isFinite(rect.top)) {
+        return false;
+      }
+      return rect.top - firstTop > 4;
+    });
   };
 
   const evaluateOverflow = () => {
