@@ -1905,6 +1905,48 @@ body.auth-locked .top-bar__session-control {
   background: rgba(46, 125, 50, 0.08);
 }
 
+.free-time-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  align-items: center;
+}
+
+.free-time-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.free-time-legend__swatch {
+  width: 1.4rem;
+  height: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid rgba(31, 45, 61, 0.25);
+}
+
+body.theme-dark .free-time-legend__swatch {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.free-time-legend__swatch--free {
+  background: rgba(46, 125, 50, 0.4);
+}
+
+.free-time-legend__swatch--conflict {
+  background: rgba(198, 40, 40, 0.35);
+}
+
+body.theme-dark .free-time-legend__swatch--free {
+  background: rgba(129, 199, 132, 0.55);
+}
+
+body.theme-dark .free-time-legend__swatch--conflict {
+  background: rgba(239, 83, 80, 0.45);
+}
+
 .summary-item-header {
   display: flex;
   justify-content: space-between;
@@ -2078,6 +2120,53 @@ body.auth-locked .top-bar__session-control {
   justify-content: space-between;
   position: relative;
   overflow: hidden;
+}
+
+.slot-cell--free-view {
+  cursor: default;
+}
+
+.slot-cell--free-view:hover {
+  background: inherit;
+}
+
+.slot-cell--free-all {
+  background: rgba(46, 125, 50, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(46, 125, 50, 0.4);
+}
+
+.slot-cell--conflict {
+  background: rgba(198, 40, 40, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(198, 40, 40, 0.4);
+}
+
+body.theme-dark .slot-cell--free-all {
+  background: rgba(129, 199, 132, 0.25);
+  box-shadow: inset 0 0 0 2px rgba(129, 199, 132, 0.55);
+}
+
+body.theme-dark .slot-cell--conflict {
+  background: rgba(239, 83, 80, 0.2);
+  box-shadow: inset 0 0 0 2px rgba(239, 83, 80, 0.55);
+}
+
+.slot-free-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.slot-free-status__label {
+  line-height: 1.3;
+}
+
+.slot-free-status__detail {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .slot-cell--locked {
