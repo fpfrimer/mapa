@@ -606,10 +606,10 @@ const elements = {
   panelOpenHubButton: document.getElementById('panel-open-hub'),
   panelResetProjectButton: document.getElementById('panel-reset-project'),
   darkModeToggle: document.getElementById('dark-mode-toggle'),
-  sessionIndicator: document.getElementById('session-indicator'),
-  sessionStatusText: document.getElementById('session-status-text'),
-  sessionLoginButton: document.getElementById('session-login-button'),
-  sessionLogoutButton: document.getElementById('session-logout-button'),
+  hubLoginButton: document.getElementById('hub-login-button'),
+  hubLoginStatusText: document.getElementById('hub-login-status'),
+  plannerLoginButton: document.getElementById('planner-login-button'),
+  plannerLoginStatusText: document.getElementById('planner-login-status'),
   loginModal: document.getElementById('login-modal'),
   loginForm: document.getElementById('login-form'),
   loginCloseButton: document.getElementById('login-modal-close'),
@@ -634,6 +634,45 @@ function hasValidAuthToken(token, expiresAt) {
     return expiresAt > Date.now();
   }
   return true;
+}
+
+function getUserInitials(username = '') {
+  if (typeof username !== 'string') {
+    return '';
+  }
+  const normalized = username.trim();
+  if (!normalized) {
+    return '';
+  }
+  return normalized.slice(0, 2).toUpperCase();
+}
+
+function updateSessionControl(button, statusElement) {
+  if (!button) {
+    return;
+  }
+  const isAuthenticated = authState.isAuthenticated;
+  const username = authState.user?.username || '';
+  const actionLabel = isAuthenticated
+    ? `Sessão ativa como ${username || 'usuário autenticado'}. Clique para sair.`
+    : 'Entrar no servidor';
+  button.classList.toggle('is-authenticated', isAuthenticated);
+  button.setAttribute('aria-label', actionLabel);
+  button.title = actionLabel;
+  const initialsElement = button.querySelector('.login-avatar__initials');
+  if (initialsElement) {
+    initialsElement.textContent = isAuthenticated ? getUserInitials(username) : '';
+  }
+  if (statusElement) {
+    statusElement.textContent = isAuthenticated
+      ? `Sessão autenticada como ${username || 'usuário autenticado'}`
+      : 'Sessão visitante';
+  }
+}
+
+function updateSessionControls() {
+  updateSessionControl(elements.hubLoginButton, elements.hubLoginStatusText);
+  updateSessionControl(elements.plannerLoginButton, elements.plannerLoginStatusText);
 }
 
 function persistAuthState() {
@@ -684,17 +723,7 @@ function updateEditingAvailability(canEdit) {
 
 function applyAuthStateToUi() {
   const canEdit = authState.isAuthenticated;
-  if (elements.sessionStatusText) {
-    elements.sessionStatusText.textContent = canEdit && authState.user?.username
-      ? `Sessão: ${authState.user.username}`
-      : 'Sessão: visitante';
-  }
-  if (elements.sessionLoginButton) {
-    elements.sessionLoginButton.hidden = canEdit;
-  }
-  if (elements.sessionLogoutButton) {
-    elements.sessionLogoutButton.hidden = !canEdit;
-  }
+  updateSessionControls();
   if (document.body) {
     document.body.classList.toggle('auth-locked', !canEdit);
   }
@@ -756,9 +785,8 @@ function ensureAuthForEditing(message = 'Faça login para editar o cronograma.')
     return true;
   }
   setStorageFeedback(message, 'warning');
-  if (elements.sessionLoginButton && !elements.sessionLoginButton.hidden) {
-    elements.sessionLoginButton.focus();
-  }
+  const focusTarget = elements.plannerLoginButton || elements.hubLoginButton;
+  focusTarget?.focus();
   return false;
 }
 
@@ -862,14 +890,28 @@ async function performLogout() {
   }
 }
 
+function handleSessionControlClick(event) {
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  if (authState.isAuthenticated) {
+    const confirmLogout = window.confirm('Deseja encerrar sua sessão?');
+    if (confirmLogout) {
+      performLogout();
+    }
+    return;
+  }
+  openLoginModal();
+}
+
 function setupAuthControls() {
   restoreAuthStateFromStorage();
   applyAuthStateToUi();
-  if (elements.sessionLoginButton) {
-    elements.sessionLoginButton.addEventListener('click', openLoginModal);
+  if (elements.hubLoginButton) {
+    elements.hubLoginButton.addEventListener('click', handleSessionControlClick);
   }
-  if (elements.sessionLogoutButton) {
-    elements.sessionLogoutButton.addEventListener('click', performLogout);
+  if (elements.plannerLoginButton) {
+    elements.plannerLoginButton.addEventListener('click', handleSessionControlClick);
   }
   if (elements.loginCloseButton) {
     elements.loginCloseButton.addEventListener('click', closeLoginModal);
