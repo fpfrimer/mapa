@@ -590,7 +590,6 @@ const elements = {
   entitySelector: document.getElementById('entity-selector'),
   freeTimeSelectorSection: document.getElementById('free-time-selector'),
   freeTimeProfessorSelect: document.getElementById('free-time-professor-selector'),
-  freeTimeProfessorList: document.getElementById('free-time-professor-list'),
   scheduleContainer: document.getElementById('schedule-container'),
   scheduleTitle: document.getElementById('schedule-title'),
   toggleMultiSelect: document.getElementById('toggle-multi-select'),
@@ -2096,41 +2095,12 @@ function ensureFreeTimeProfessorSelectionIntegrity() {
   return changed;
 }
 
-function renderFreeTimeProfessorChips() {
-  const { freeTimeProfessorList } = elements;
-  if (!freeTimeProfessorList) return;
+function syncFreeTimeProfessorSelection() {
   const changed = ensureFreeTimeProfessorSelectionIntegrity();
   if (changed) {
     persistState();
   }
-  freeTimeProfessorList.innerHTML = '';
-  if (!state.freeTimeProfessorIds.length) {
-    return;
-  }
-  const sorted = state.freeTimeProfessorIds
-    .map((id) => ({ id, professor: getProfessorById(id) }))
-    .filter(({ professor }) => Boolean(professor))
-    .sort((a, b) => normalizeText(a.professor.name).localeCompare(normalizeText(b.professor.name)));
-  sorted.forEach(({ id, professor }) => {
-    const li = document.createElement('li');
-    li.className = 'chip-item';
-    const text = document.createElement('span');
-    text.textContent = formatProfessorOptionLabel(professor);
-    li.appendChild(text);
-    const removeButton = document.createElement('button');
-    removeButton.type = 'button';
-    removeButton.className = 'icon-button small danger chip-remove';
-    removeButton.dataset.professorId = id;
-    removeButton.title = 'Remover docente';
-    removeButton.setAttribute('aria-label', 'Remover docente');
-    const icon = createIcon('icon-remove', 'icon--small');
-    if (icon) {
-      removeButton.appendChild(icon);
-    }
-    removeButton.appendChild(createVisuallyHiddenText('Remover docente'));
-    li.appendChild(removeButton);
-    freeTimeProfessorList.appendChild(li);
-  });
+  return changed;
 }
 
 function updateFreeTimeSelectorOptions() {
@@ -2156,7 +2126,6 @@ function addFreeTimeProfessorId(professorId) {
   if (!exists) return;
   if (state.freeTimeProfessorIds.includes(id)) return;
   state.freeTimeProfessorIds = [...state.freeTimeProfessorIds, id];
-  renderFreeTimeProfessorChips();
   renderSchedule();
   persistState();
 }
@@ -2167,7 +2136,6 @@ function removeFreeTimeProfessorId(professorId) {
   const next = state.freeTimeProfessorIds.filter((value) => value !== id);
   if (next.length === state.freeTimeProfessorIds.length) return;
   state.freeTimeProfessorIds = next;
-  renderFreeTimeProfessorChips();
   renderSchedule();
   persistState();
 }
@@ -2265,7 +2233,7 @@ function refreshLists() {
   updateProfessorDisciplineOptions();
   updateDisciplineColorSuggestion();
   updateFreeTimeSelectorOptions();
-  renderFreeTimeProfessorChips();
+  syncFreeTimeProfessorSelection();
 }
 
 function startEntityEditing(type, id) {
@@ -2562,7 +2530,7 @@ function updateEntitySelector() {
     }
     clearSelectedSlots();
     updateFreeTimeSelectorOptions();
-    renderFreeTimeProfessorChips();
+    syncFreeTimeProfessorSelection();
     renderSchedule();
     return;
   }
@@ -3400,10 +3368,7 @@ function renderSchedule() {
   updateScheduleTitle();
   const isFreeView = state.view === 'free';
   if (isFreeView) {
-    const changed = ensureFreeTimeProfessorSelectionIntegrity();
-    if (changed) {
-      persistState();
-    }
+    syncFreeTimeProfessorSelection();
   }
   const hasSelection = isFreeView ? state.freeTimeProfessorIds.length > 0 : Boolean(state.selectedEntity);
   if (!hasSelection) {
@@ -3685,17 +3650,31 @@ function buildFreeTimeSummary() {
   fragment.appendChild(highlight);
 
   const list = document.createElement('ul');
-  list.className = 'summary-list';
+  list.className = 'chip-list free-time-summary-list';
   professors.forEach((professor) => {
     const item = document.createElement('li');
-    item.className = 'summary-item';
-    const header = document.createElement('div');
-    header.className = 'summary-item-header';
-    const name = document.createElement('span');
-    name.className = 'summary-item-title';
-    name.textContent = professor.name;
-    header.appendChild(name);
-    item.appendChild(header);
+    item.className = 'chip-item free-time-summary-chip';
+    const label = document.createElement('span');
+    label.textContent = formatProfessorOptionLabel(professor);
+    item.appendChild(label);
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'icon-button small danger chip-remove';
+    removeButton.dataset.professorId = professor.id;
+    removeButton.dataset.action = 'remove-free-professor';
+    const removeLabel = professor?.name
+      ? `Remover ${professor.name} da lista`
+      : 'Remover docente';
+    removeButton.title = removeLabel;
+    removeButton.setAttribute('aria-label', removeLabel);
+    const icon = createIcon('icon-remove', 'icon--small');
+    if (icon) {
+      removeButton.appendChild(icon);
+    }
+    removeButton.appendChild(createVisuallyHiddenText(removeLabel));
+    item.appendChild(removeButton);
+
     list.appendChild(item);
   });
   fragment.appendChild(list);
@@ -6093,7 +6072,7 @@ function applyStateFromData(data) {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
-  renderFreeTimeProfessorChips();
+  syncFreeTimeProfessorSelection();
   ensureDisciplineColors();
   sortAllCollections();
   refreshLists();
@@ -6273,7 +6252,7 @@ function resetPlannerState(options = {}) {
     elements.professorAreaCheckbox.checked = false;
   }
   renderProfessorFormDisciplineChips();
-  renderFreeTimeProfessorChips();
+  syncFreeTimeProfessorSelection();
   resetSearchFilters();
   refreshLists();
   updateEntitySelector();
@@ -6736,7 +6715,7 @@ function setupSearchableDropdowns() {
 }
 
 function bindFreeTimeSelectionControls() {
-  const { freeTimeProfessorSelect, freeTimeProfessorList } = elements;
+  const { freeTimeProfessorSelect, viewSummary } = elements;
   if (freeTimeProfessorSelect) {
     freeTimeProfessorSelect.addEventListener('change', (event) => {
       const value = event.target.value;
@@ -6745,9 +6724,9 @@ function bindFreeTimeSelectionControls() {
       updateSearchableDropdownValue(event.target, '');
     });
   }
-  if (freeTimeProfessorList) {
-    freeTimeProfessorList.addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-professor-id]');
+  if (viewSummary) {
+    viewSummary.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-action="remove-free-professor"][data-professor-id]');
       if (!button) return;
       removeFreeTimeProfessorId(button.dataset.professorId);
     });

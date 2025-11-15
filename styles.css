@@ -964,6 +964,23 @@ body.theme-dark .menu-divider {
   height: 1.6rem;
 }
 
+.free-time-summary-list {
+  width: 100%;
+}
+
+.free-time-summary-chip {
+  background: rgba(31, 45, 61, 0.08);
+  border: 1px solid rgba(31, 45, 61, 0.14);
+  color: var(--primary-dark);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.65rem;
+}
+
+.free-time-summary-chip .chip-remove {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
 .icon-button.small {
   width: 1.75rem;
   height: 1.75rem;
