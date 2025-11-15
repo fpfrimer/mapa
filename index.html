@@ -85,10 +85,23 @@
   <div id="planner-shell" class="planner-shell">
   <header>
     <div class="top-bar" role="region" aria-label="Seleção de visualização">
-      <div class="top-bar__primary">
-        <div class="project-toolbar">
-          <button
-            type="button"
+      <button
+        type="button"
+        id="top-bar-compact-toggle"
+        class="top-bar__compact-toggle"
+        aria-controls="top-bar-controls"
+        aria-expanded="false"
+      >
+        <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
+          <use href="assets/icons/ui-icons.svg#icon-settings" xlink:href="assets/icons/ui-icons.svg#icon-settings"></use>
+        </svg>
+        <span>Controles do mapa</span>
+      </button>
+      <div class="top-bar__drawer" id="top-bar-controls">
+        <div class="top-bar__primary">
+          <div class="project-toolbar">
+            <button
+              type="button"
             id="project-back-button"
             class="icon-button"
             aria-label="Voltar para a tela inicial"
@@ -259,6 +272,7 @@
           </span>
         </div>
       </div>
+      <div class="top-bar__drawer-backdrop" aria-hidden="true"></div>
     </div>
   </header>
 
