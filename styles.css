@@ -2389,6 +2389,10 @@ body.theme-dark .slot-cell--conflict {
   min-height: 1rem;
 }
 
+.slot-content .slot-line-discipline {
+  font-weight: 700; /* Make discipline name bold as requested */
+}
+
 .slot-content.with-discipline-color {
   border-left: 6px solid var(--discipline-color, transparent);
   background: var(--discipline-fill, rgba(31, 45, 61, 0.05));
@@ -2399,6 +2403,38 @@ body.theme-dark .slot-cell--conflict {
 
 .slot-content.with-discipline-color .badge {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+/* Improved contrast for dark mode */
+body.theme-dark .slot-content.with-discipline-color {
+  background: var(--discipline-fill, rgba(255, 255, 255, 0.1));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+body.theme-dark .slot-content.with-discipline-color .badge {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+/* Better text contrast in dark mode */
+body.theme-dark .slot-content .slot-line-discipline .badge.discipline {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  font-weight: 700;
+}
+
+body.theme-dark .slot-content .slot-line-period .badge.period {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: rgba(219, 225, 255, 0.95) !important;
+}
+
+body.theme-dark .slot-content .slot-line-professor .badge.docente {
+  background: rgba(255, 204, 122, 0.2) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+body.theme-dark .slot-content .slot-line-room .badge.room {
+  background: rgba(76, 175, 80, 0.2) !important;
+  color: rgba(240, 255, 240, 0.95) !important;
 }
 
 .slot-error-indicator {
@@ -2822,6 +2858,7 @@ body.theme-dark .slot-cell--conflict {
   border-radius: 999px;
   font-size: 0.75rem;
   background: rgba(0, 0, 0, 0.05);
+  color: var(--text);
 }
 
 .badge.period {
@@ -2837,6 +2874,7 @@ body.theme-dark .slot-cell--conflict {
 .badge.discipline {
   background: rgba(94, 53, 177, 0.15);
   color: #4527a0;
+  font-weight: 700; /* Make discipline names bold as requested */
 }
 
 .badge.docente {
@@ -2850,6 +2888,33 @@ body.theme-dark .slot-cell--conflict {
 .entity-badge.area {
   background: rgba(0, 150, 136, 0.18);
   color: #00695c;
+}
+
+/* Improved contrast for badges in dark mode */
+body.theme-dark .badge.discipline {
+  background: rgba(156, 39, 176, 0.3) !important;
+  color: #ede7f6 !important;
+}
+
+body.theme-dark .badge.period {
+  background: rgba(59, 130, 246, 0.25) !important;
+  color: #eff6ff !important;
+}
+
+body.theme-dark .badge.room {
+  background: rgba(76, 175, 80, 0.25) !important;
+  color: #f1f8e9 !important;
+}
+
+body.theme-dark .badge.docente {
+  background: rgba(255, 152, 0, 0.3) !important;
+  color: #fff3e0 !important;
+}
+
+body.theme-dark .badge.area,
+body.theme-dark .entity-badge.area {
+  background: rgba(0, 150, 136, 0.3) !important;
+  color: #e0f2f1 !important;
 }
 
 .course-area-indicator {
