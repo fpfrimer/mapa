@@ -408,9 +408,12 @@ function getProfessorDetailParts(professor) {
   return details;
 }
 
-function formatProfessorOptionLabel(professor) {
+function formatProfessorOptionLabel(professor, showDetails = true) {
   if (!professor) return '';
   const baseName = professor.name || '';
+  if (!showDetails) {
+    return baseName; // Retorna apenas o nome do professor se showDetails for false
+  }
   const details = [];
   const disciplineLabels = getProfessorDisciplineLabels(professor);
   if (disciplineLabels.length) {
@@ -2118,7 +2121,7 @@ function updateFreeTimeSelectorOptions() {
   state.professors.forEach((professor) => {
     const option = document.createElement('option');
     option.value = professor.id;
-    option.textContent = formatProfessorOptionLabel(professor);
+    option.textContent = formatProfessorOptionLabel(professor, false); // Apenas nome do professor
     freeTimeProfessorSelect.appendChild(option);
   });
   syncSearchableDropdownOptions(freeTimeProfessorSelect);
@@ -2555,13 +2558,8 @@ function updateEntitySelector() {
     option.value = item.id;
     let label = item.name;
     if (state.view === 'professor') {
-      const disciplineLabels = getProfessorDisciplineLabels(item);
-      if (disciplineLabels.length) {
-        label = `${item.name} • ${disciplineLabels.join(', ')}`;
-      }
-      if (item.isCourseArea) {
-        label = `${label} • Área do curso`;
-      }
+      // Para manter a interface limpa, exibir apenas o nome do professor
+      label = item.name;
     }
     option.textContent = label;
     entitySelector.appendChild(option);
@@ -3662,7 +3660,7 @@ function buildFreeTimeSummary() {
     const item = document.createElement('li');
     item.className = 'chip-item free-time-summary-chip';
     const label = document.createElement('span');
-    label.textContent = formatProfessorOptionLabel(professor);
+    label.textContent = formatProfessorOptionLabel(professor, false); // Apenas nome do professor
     item.appendChild(label);
 
     const removeButton = document.createElement('button');
