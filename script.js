@@ -93,12 +93,19 @@ function createIcon(symbolId, additionalClass = '') {
   svg.setAttribute('class', classNames.join(' '));
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
+  svg.setAttribute('role', 'img');  // Add role for better accessibility
 
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
   use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
   use.setAttribute('href', reference);
   svg.appendChild(use);
+
+  // Add error handling to detect when the icon fails to load
+  svg.addEventListener('error', function(e) {
+    console.warn(`Failed to load icon: ${symbolId}`, e);
+  }, true);
+
   return svg;
 }
 
