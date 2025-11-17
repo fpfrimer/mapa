@@ -5012,6 +5012,10 @@ function setCurrentProject(project) {
   persistCurrentProjectMetadata();
   updateProjectChrome();
   renderProjectHubList();
+  // Ensure UI is updated when current project changes
+  refreshLists();
+  updateEntitySelector();
+  renderSchedule();
 }
 
 function hasWorkspaceData() {
@@ -5050,7 +5054,26 @@ function safeClone(value) {
     return JSON.parse(JSON.stringify(value));
   } catch (error) {
     console.error('Erro ao clonar dados.', error);
-    return value;
+    // More robust deep cloning as fallback
+    try {
+      if (typeof value === 'object') {
+        if (Array.isArray(value)) {
+          return value.map(item => safeClone(item));
+        } else {
+          const cloned = {};
+          for (const key in value) {
+            if (value.hasOwnProperty(key)) {
+              cloned[key] = safeClone(value[key]);
+            }
+          }
+          return cloned;
+        }
+      }
+      return value;
+    } catch (deepCloneError) {
+      console.error('Erro ao clonar dados com método alternativo.', deepCloneError);
+      return value;
+    }
   }
 }
 
@@ -5124,12 +5147,14 @@ async function loadSavedConfigurationsFromServer(options = {}) {
     } else {
       setProjectHubFeedback('');
     }
+    return savedConfigurations; // Return the configurations for potential use by caller
   } catch (error) {
     console.error('Erro ao carregar configurações do servidor.', error);
     savedConfigurations = [];
     renderSavedConfigurations();
     setStorageFeedback('Não foi possível carregar as configurações do servidor.', 'error');
     setProjectHubFeedback('Não foi possível carregar os semestres do servidor.', 'error');
+    return savedConfigurations; // Return empty array to indicate failure
   }
 }
 
@@ -5472,6 +5497,10 @@ function resumeLocalDraft() {
   }
   hideProjectHub();
   setStorageFeedback('Rascunho carregado do navegador.', 'success');
+  // Ensure UI is updated after resuming draft
+  refreshLists();
+  updateEntitySelector();
+  renderSchedule();
 }
 
 function discardLocalDraft() {
@@ -5495,11 +5524,18 @@ function applyConfigurationPayload(config) {
     rebuildCounters();
   }
   persistState();
+  // Ensure UI is updated after applying configuration
+  refreshLists();
+  updateEntitySelector();
+  renderSchedule();
+  updateSelectionUI();
 }
 
 function openProjectFromConfig(config) {
   if (!config) return;
   if (currentProject && currentProject.id === config.id) {
+    // Even if it's the same project, we should ensure it's properly applied
+    applyConfigurationPayload(config);
     hideProjectHub();
     return;
   }
@@ -6109,6 +6145,11 @@ function restoreStateFromStorage(options = {}) {
       rebuildCounters();
     }
     persistState();
+    // Ensure UI is updated after restoring state
+    refreshLists();
+    updateEntitySelector();
+    renderSchedule();
+    updateSelectionUI();
     if (notify) {
       setStorageFeedback('Configuração carregada do navegador.', 'success');
     }
@@ -6266,6 +6307,7 @@ function resetPlannerState(options = {}) {
   resetDisciplineColorInput();
   updateDisciplineColorSuggestion({ force: true });
   updateSelectionUI();
+  renderSchedule(); // Ensure schedule is also rendered after reset
   if (persist) {
     persistState();
   }
@@ -6895,7 +6937,10 @@ elements.entitySelector.addEventListener('change', (event) => {
 async function init() {
   setupDarkModeToggle();
   setupAuthControls();
+
+  // Load saved configurations from server first
   await loadSavedConfigurationsFromServer();
+
   setupProfessorFormControls();
   setupSearchableDropdowns();
   bindFreeTimeSelectionControls();
@@ -6907,6 +6952,29 @@ async function init() {
   setupTopBarResponsiveControls();
   bindSearchFilters();
   resetSearchFilters();
+
+  // Load the current project metadata
+  currentProject = loadStoredProjectMetadata();
+
+  // Verify that the current project still exists in the server list if it has an ID
+  if (currentProject && currentProject.id) {
+    const serverConfig = savedConfigurations.find(config => config.id === currentProject.id);
+    if (!serverConfig) {
+      // Current project not found in server list, reset it
+      currentProject = null;
+      persistCurrentProjectMetadata();
+    }
+  }
+
+  // If no current project but has local draft, check if it needs to be loaded
+  if (!currentProject && hasLocalDraft()) {
+    restoreStateFromStorage({ notify: false });
+    const storedMeta = loadStoredProjectMetadata();
+    if (storedMeta) {
+      setCurrentProject(storedMeta);
+    }
+  }
+
   refreshLists();
   if (elements.viewTypeSelect) {
     elements.viewTypeSelect.value = state.view;
@@ -6914,11 +6982,6 @@ async function init() {
   updateEntitySelector();
   updateSelectionUI();
   setStorageFeedback('');
-  currentProject = loadStoredProjectMetadata();
-  if (currentProject && !currentProject.id && !hasLocalDraft()) {
-    currentProject = null;
-    persistCurrentProjectMetadata();
-  }
   updateProjectChrome();
   renderProjectHubList();
 }
