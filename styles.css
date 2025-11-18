@@ -1785,6 +1785,26 @@ body.theme-dark .top-bar__icon-button.is-active {
   transition: var(--transition);
 }
 
+/* Estilo para control-select na barra superior, para ficar consistente com searchable-select */
+.top-bar__section .control-select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+
+.top-bar__section .control-select option {
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
+.top-bar__section .control-select:focus-visible {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
 .control-select:focus-visible {
   border-color: #fff;
   background: rgba(255, 255, 255, 0.25);
@@ -3567,6 +3587,18 @@ body.theme-dark .searchable-empty {
 body.theme-dark .searchable-option:hover,
 body.theme-dark .searchable-option.is-highlighted {
   background: rgba(59, 130, 246, 0.2);
+}
+
+/* Estilo para control-select no modo noturno na barra superior */
+body.theme-dark .top-bar__section .control-select {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+body.theme-dark .top-bar__section .control-select option {
+  background: var(--panel-bg);
+  color: var(--text);
 }
 
 body.login-modal-open {
