@@ -2247,6 +2247,7 @@ function refreshLists() {
 }
 
 function startEntityEditing(type, id) {
+  if (!ensureAuthForEditing()) return;
   state.entityEditing = { type, id };
   refreshLists();
 }
@@ -2257,6 +2258,7 @@ function cancelEntityEditing() {
 }
 
 function saveEntityEdit(type, id, updates) {
+  if (!ensureAuthForEditing()) return;
   const collectionKey = entityCollections[type];
   if (!collectionKey) return;
   const list = state[collectionKey];
@@ -2404,6 +2406,7 @@ function describeDisciplinePeriodChangeConflicts(disciplineId, fromPeriodId, toP
 }
 
 function deleteEntity(type, id) {
+  if (!ensureAuthForEditing()) return;
   const collectionKey = entityCollections[type];
   if (!collectionKey) return;
   const list = state[collectionKey];
