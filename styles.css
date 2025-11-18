@@ -2515,9 +2515,11 @@ body.theme-dark .slot-content .slot-line-room .badge.room {
   border-radius: 16px;
   padding: 1.5rem;
   width: min(520px, 90vw);
+  max-width: 95vw;
+  max-height: 90vh;
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.2);
   position: relative;
-  overflow: visible;
+  overflow: auto;
 }
 
 .modal-close {
@@ -2593,6 +2595,12 @@ body.theme-dark .slot-content .slot-line-room .badge.room {
   border-radius: 8px;
   background: #fff;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+body.theme-dark .searchable-input-wrapper {
+  background: var(--panel-bg);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .searchable-select.open .searchable-input-wrapper,
@@ -2775,6 +2783,8 @@ body.theme-dark .slot-content .slot-line-room .badge.room {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .suggestion-block {
@@ -2811,6 +2821,29 @@ body.theme-dark .slot-content .slot-line-room .badge.room {
   background: rgba(56, 142, 60, 0.22);
   outline: none;
   transform: translateY(-1px);
+}
+
+/* Estilos para sugestões no modo noturno */
+body.theme-dark .suggestion-chip {
+  background: rgba(102, 187, 106, 0.2) !important;
+  color: #c8e6c9 !important;
+}
+
+body.theme-dark .suggestion-chip:hover,
+body.theme-dark .suggestion-chip:focus-visible {
+  background: rgba(102, 187, 106, 0.3) !important;
+}
+
+body.theme-dark .suggestion-warning {
+  color: #ffabab !important;
+}
+
+body.theme-dark .suggestions strong {
+  color: #93c5fd !important;
+}
+
+body.theme-dark .suggestion-label {
+  color: #93c5fd !important;
 }
 
 .suggestions strong {
@@ -3501,6 +3534,21 @@ body.theme-dark .searchable-input {
   background: var(--panel-bg) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
+}
+
+/* Estilos para o modal de atribuição no modo noturno */
+body.theme-dark .modal-content {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+body.theme-dark .suggestions {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+body.theme-dark .suggestion-label {
+  color: var(--primary-dark);
 }
 
 body.login-modal-open {
