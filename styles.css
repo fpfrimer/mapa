@@ -861,6 +861,14 @@ body.theme-dark .menu-divider {
   border-radius: 10px;
   border: 1px solid var(--border);
   font-size: 0.9rem;
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
+body.theme-dark .list-tools input[type='search'] {
+  background: var(--panel-bg);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .list-container {
