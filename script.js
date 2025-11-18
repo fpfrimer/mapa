@@ -4623,7 +4623,7 @@ function getProfessorsOrderedForDiscipline(disciplineId) {
   state.professors.forEach((professor) => {
     const option = {
       id: professor.id,
-      label: formatProfessorOptionLabel(professor),
+      label: professor.name || '',  // Apenas o nome do professor, sem disciplinas vinculadas
       linked: prioritizedIds.has(professor.id)
     };
     if (option.linked) {
