@@ -1468,6 +1468,25 @@ button.primary:hover {
   flex-direction: column;
   gap: 0.5rem;
   position: relative;
+  z-index: 10;
+  margin-bottom: 0.5rem;
+}
+
+/* Estilo para garantir que a barra superior não sobreponha indevidamente os controles */
+.top-bar:has(.top-bar__drawer.top-bar--measuring),
+.top-bar:has(.top-bar__drawer.open) {
+  z-index: 1200;
+}
+
+/* Ajuste de layout responsivo para evitar sobreposição em telas pequenas */
+@media (max-width: 768px) {
+  .top-bar {
+    z-index: 10;
+  }
+
+  .top-bar__drawer.top-bar--drawer-open {
+    z-index: 1200;
+  }
 }
 
 .top-bar__drawer {
