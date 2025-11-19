@@ -3628,6 +3628,41 @@ body.theme-dark .top-bar__section .control-select option {
   color: var(--text);
 }
 
+/* Estilos para o modal de impressão */
+#print-modal .modal-content {
+  width: min(600px, 90vw);
+}
+
+#print-modal .form-field {
+  margin-bottom: 1.5rem;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0;
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 1.2rem;
+  height: 1.2rem;
+  accent-color: var(--primary);
+}
+
+.radio-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0;
+}
+
+.radio-field input[type='radio'] {
+  width: 1.2rem;
+  height: 1.2rem;
+  accent-color: var(--primary);
+}
+
 body.login-modal-open {
   overflow: hidden;
 }

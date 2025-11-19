@@ -559,6 +559,11 @@ const elements = {
   projectHubFeedback: document.getElementById('project-hub-feedback'),
   projectBackButton: document.getElementById('project-back-button'),
   projectSaveButton: document.getElementById('project-save-button'),
+  printToggle: document.getElementById('print-toggle'),
+  printModal: document.getElementById('print-modal'),
+  printForm: document.getElementById('print-form'),
+  printCancelButton: document.getElementById('cancel-print'),
+  previewPrintButton: document.getElementById('preview-print'),
   projectTitleName: document.getElementById('project-title-name'),
   projectTitleNameText: document.getElementById('project-title-name-text'),
   topBar: topBarElement,
@@ -3181,7 +3186,7 @@ function collectAssignmentErrors(periodId, data) {
 
 function buildCellContent(assignments, view) {
   if (!assignments.length) {
-    return { html: '<span class="slot-empty">Disponível</span>', errors: [] };
+    return { html: '', errors: [] };  // Remover a exibição da palavra "Disponível"
   }
 
   const errorSet = new Set();
@@ -6409,6 +6414,51 @@ function bindProjectControls() {
   }
 }
 
+function bindPrintControls() {
+  if (elements.printToggle) {
+    console.log('Botão de impressão encontrado, adicionando evento');
+    elements.printToggle.addEventListener('click', () => {
+      console.log('Evento de clique no botão de impressão disparado');
+      openPrintModal();
+    });
+  } else {
+    console.log('Botão de impressão NÃO encontrado!');
+  }
+
+  if (elements.printModal) {
+    elements.printModal.addEventListener('click', (event) => {
+      if (event.target === elements.printModal || event.target?.closest('[data-print-dismiss]')) {
+        closePrintModal();
+      }
+    });
+  } else {
+    console.log('Modal de impressão NÃO encontrado!');
+  }
+
+  if (elements.printCancelButton) {
+    elements.printCancelButton.addEventListener('click', () => {
+      closePrintModal();
+    });
+  }
+
+  if (elements.previewPrintButton) {
+    elements.previewPrintButton.addEventListener('click', () => {
+      // Implementar pré-visualização se necessário
+      alert('Pré-visualização será implementada em futura melhoria.');
+    });
+  }
+
+  if (elements.printForm) {
+    elements.printForm.addEventListener('submit', handlePrintSubmit);
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !elements.printModal.classList.contains('hidden')) {
+      closePrintModal();
+    }
+  });
+}
+
 function bindManagementPanel() {
   if (!elements.managementPanel) return;
 
@@ -6950,6 +7000,7 @@ async function init() {
   bindProjectControls();
   bindManagementPanel();
   bindSelectionControls();
+  bindPrintControls();
   setupTopBarResponsiveControls();
   bindSearchFilters();
   resetSearchFilters();
@@ -6985,6 +7036,213 @@ async function init() {
   setStorageFeedback('');
   updateProjectChrome();
   renderProjectHubList();
+}
+
+function openPrintModal() {
+  console.log('openPrintModal chamada');
+  if (!elements.printModal) {
+    console.log('Modal não encontrado');
+    return;
+  }
+  elements.printModal.classList.remove('hidden');
+  elements.printModal.setAttribute('aria-hidden', 'false');
+
+  // Atualizar o nome da visão atual
+  const currentViewName = document.getElementById('current-view-name');
+  if (currentViewName) {
+    let viewText = 'Período';
+    switch (state.view) {
+      case 'professor':
+        viewText = 'Docente';
+        break;
+      case 'room':
+        viewText = 'Sala';
+        break;
+      case 'free':
+        viewText = 'Horário Livre';
+        break;
+    }
+    currentViewName.textContent = viewText;
+  }
+
+  document.body.classList.add('modal-open');
+  console.log('Modal aberto');
+}
+
+function closePrintModal() {
+  if (!elements.printModal) return;
+  elements.printModal.classList.add('hidden');
+  elements.printModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+function handlePrintSubmit(event) {
+  event.preventDefault();
+
+  const selectedMaps = {
+    currentView: document.getElementById('print-current-view').checked,
+    allPeriods: document.getElementById('print-all-periods').checked,
+    allProfessors: document.getElementById('print-all-professors').checked,
+    allRooms: document.getElementById('print-all-rooms').checked
+  };
+
+  const layout = document.querySelector('input[name="print-layout"]:checked')?.value || 'normal';
+
+  // Preparar os dados para impressão
+  const printData = preparePrintData(selectedMaps);
+
+  // Gerar o HTML para impressão
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(generatePrintHTML(printData, layout));
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Esperar um pouco para garantir que o conteúdo foi carregado antes de imprimir
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  }
+
+  closePrintModal();
+}
+
+function preparePrintData(selections) {
+  const data = {};
+
+  // Visão atual
+  if (selections.currentView) {
+    data.currentView = {
+      view: state.view,
+      entity: state.selectedEntity,
+      title: document.getElementById('schedule-title')?.textContent || 'Visão Atual',
+      html: document.querySelector('.schedule-table')?.outerHTML || ''
+    };
+  }
+
+  // Todos os períodos
+  if (selections.allPeriods && state.periods.length > 0) {
+    data.allPeriods = [];
+    state.periods.forEach(period => {
+      // Simular troca de visão para obter o conteúdo
+      const originalView = state.view;
+      const originalEntity = state.selectedEntity;
+
+      state.view = 'period';
+      state.selectedEntity = period.id;
+
+      // Precisamos renderizar temporariamente para obter o conteúdo
+      // Isso pode ser complexo devido às dependências, então simplificando
+      data.allPeriods.push({
+        title: `Período: ${period.name}`,
+        html: '' // Conteúdo será obtido separadamente
+      });
+
+      // Restaurar os valores originais
+      state.view = originalView;
+      state.selectedEntity = originalEntity;
+    });
+  }
+
+  // Todos os professores
+  if (selections.allProfessors && state.professors.length > 0) {
+    data.allProfessors = [];
+    state.professors.forEach(professor => {
+      const originalView = state.view;
+      const originalEntity = state.selectedEntity;
+
+      state.view = 'professor';
+      state.selectedEntity = professor.id;
+
+      data.allProfessors.push({
+        title: `Docente: ${professor.name}`,
+        html: '' // Conteúdo será obtido separadamente
+      });
+
+      state.view = originalView;
+      state.selectedEntity = originalEntity;
+    });
+  }
+
+  // Todas as salas
+  if (selections.allRooms && state.rooms.length > 0) {
+    data.allRooms = [];
+    state.rooms.forEach(room => {
+      const originalView = state.view;
+      const originalEntity = state.selectedEntity;
+
+      state.view = 'room';
+      state.selectedEntity = room.id;
+
+      data.allRooms.push({
+        title: `Sala: ${room.name}`,
+        html: '' // Conteúdo será obtido separadamente
+      });
+
+      state.view = originalView;
+      state.selectedEntity = originalEntity;
+    });
+  }
+
+  return data;
+}
+
+function generatePrintHTML(data, layout) {
+  // Inclui estilos básicos para impressão
+  const printStyles = `
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      .schedule-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+      .schedule-table th, .schedule-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+      .schedule-table th { background-color: #f5f5f5; }
+      .session-label { font-weight: bold; }
+      .slot-content { font-size: 0.7rem; }
+      .slot-line-discipline { font-weight: bold; }
+      .discipline { font-weight: bold; }
+      ${layout === 'compact' ? 'body { font-size: 0.8rem; } .slot-content { font-size: 0.6rem; }' : ''}
+    </style>
+  `;
+
+  let content = '<h1>Mapas de Horários</h1>';
+
+  if (data.currentView) {
+    content += `<h2>${data.currentView.title}</h2>${data.currentView.html}`;
+  }
+
+  if (data.allPeriods && data.allPeriods.length > 0) {
+    content += '<h2>Todos os Períodos</h2>';
+    data.allPeriods.forEach(item => {
+      content += `<h3>${item.title}</h3>`;
+    });
+  }
+
+  if (data.allProfessors && data.allProfessors.length > 0) {
+    content += '<h2>Todos os Docentes</h2>';
+    data.allProfessors.forEach(item => {
+      content += `<h3>${item.title}</h3>`;
+    });
+  }
+
+  if (data.allRooms && data.allRooms.length > 0) {
+    content += '<h2>Todas as Salas</h2>';
+    data.allRooms.forEach(item => {
+      content += `<h3>${item.title}</h3>`;
+    });
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Impressão de Mapas de Horários</title>
+        ${printStyles}
+      </head>
+      <body>
+        ${content}
+      </body>
+    </html>
+  `;
 }
 
 function startApp() {

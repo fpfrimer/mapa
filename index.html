@@ -376,6 +376,19 @@
         </button>
         <button
           type="button"
+          id="print-toggle"
+          class="menu-button menu-button--toggle"
+          aria-pressed="false"
+          aria-label="Imprimir"
+          title="Imprimir mapas"
+        >
+          <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
+            <use href="assets/icons/ui-icons.svg#icon-print" xlink:href="assets/icons/ui-icons.svg#icon-print"></use>
+          </svg>
+          <span class="label visually-hidden">Imprimir</span>
+        </button>
+        <button
+          type="button"
           id="dark-mode-toggle"
           class="menu-button menu-button--toggle"
           aria-pressed="false"
@@ -673,6 +686,51 @@
       </form>
     </div>
   </div>
+
+    <!-- Modal de impressão -->
+    <div id="print-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
+        <h2>Imprimir mapas de horários</h2>
+        <form id="print-form">
+          <div class="form-field">
+            <label for="print-maps">Selecione os mapas para imprimir:</label>
+            <div class="checkbox-field">
+              <input type="checkbox" id="print-current-view" checked />
+              <label for="print-current-view">Visão atual (<span id="current-view-name">Período</span>)</label>
+            </div>
+            <div class="checkbox-field">
+              <input type="checkbox" id="print-all-periods" />
+              <label for="print-all-periods">Todos os períodos</label>
+            </div>
+            <div class="checkbox-field">
+              <input type="checkbox" id="print-all-professors" />
+              <label for="print-all-professors">Todos os docentes</label>
+            </div>
+            <div class="checkbox-field">
+              <input type="checkbox" id="print-all-rooms" />
+              <label for="print-all-rooms">Todas as salas</label>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="print-layout">Layout de impressão:</label>
+            <div class="radio-field">
+              <input type="radio" id="print-layout-normal" name="print-layout" value="normal" checked />
+              <label for="print-layout-normal">Normal</label>
+            </div>
+            <div class="radio-field">
+              <input type="radio" id="print-layout-compact" name="print-layout" value="compact" />
+              <label for="print-layout-compact">Compacto</label>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="cancel-print" class="danger">Cancelar</button>
+            <button type="button" id="preview-print">Visualizar</button>
+            <button type="submit" class="primary">Imprimir</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <script src="script.js"></script>
   </body>
