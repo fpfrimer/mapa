@@ -13,19 +13,55 @@ O navegador carrega uma interface estática e chama a API HTTP do processo Node.
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  node distance=12mm and 16mm,
-  box/.style={draw=Line,rounded corners=2pt,fill=Paper,minimum width=34mm,minimum height=12mm,align=center},
-  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+  archbox/.style={
+    draw=Line,
+    line width=0.6pt,
+    rounded corners=2pt,
+    fill=Paper,
+    text width=31mm,
+    minimum height=19mm,
+    inner sep=2mm,
+    align=center
+  },
+  serverbox/.style={archbox,draw=UtfprYellow!75!Ink,fill=UtfprYellow!14,line width=0.9pt},
+  servicebox/.style={archbox,text width=38mm,minimum height=16mm},
+  flow/.style={Latex-Latex,line width=0.8pt,color=Slate},
+  supervision/.style={-{Latex[length=2mm]},line width=0.8pt,color=Slate},
+  flowlabel/.style={fill=white,inner sep=1.5pt,font=\scriptsize,align=center,text=Slate}
 ]
-\node[box] (browser) {Navegador\\HTML, CSS e JavaScript};
-\node[box,right=of browser] (node) {Servidor Node.js\\HTTP + API};
-\node[box,right=of node] (data) {Diretório de dados\\JSON protegido};
-\draw[flow,<->] (browser) -- node[midway,above,font=\scriptsize] {HTTPS/HTTP interno} (node);
-\draw[flow,<->] (node) -- node[midway,above,font=\scriptsize] {fila + troca atômica} (data);
-\node[box,below=of node] (systemd) {systemd\\ambiente e reinício};
-\draw[flow] (systemd) -- (node);
+\node[archbox] (browser) {%
+  {\scriptsize\bfseries\color{Slate} CLIENTE}\\[1.2mm]
+  {\bfseries Navegador}\\[-0.2mm]
+  {\small HTML, CSS e JavaScript}%
+};
+\node[serverbox,right=27mm of browser] (node) {%
+  {\scriptsize\bfseries\color{Slate} APLICAÇÃO}\\[1.2mm]
+  {\bfseries Servidor Node.js}\\[-0.2mm]
+  {\small HTTP + API autenticada}%
+};
+\node[archbox,right=27mm of node] (data) {%
+  {\scriptsize\bfseries\color{Slate} PERSISTÊNCIA}\\[1.2mm]
+  {\bfseries Diretório de dados}\\[-0.2mm]
+  {\small JSON protegido}%
+};
+
+\draw[flow] (browser.east) --
+  node[flowlabel] {requisições\\HTTPS/HTTP}
+  (node.west);
+\draw[flow] (node.east) --
+  node[flowlabel] {leitura e escrita\\serializadas}
+  (data.west);
+
+\node[servicebox,below=14mm of node] (systemd) {%
+  {\scriptsize\bfseries\color{Slate} SUPERVISÃO}\\[1.2mm]
+  {\bfseries systemd}\\[-0.2mm]
+  {\small ambiente e reinício}%
+};
+\draw[supervision] (systemd.north) --
+  node[flowlabel,right=1mm] {inicia e\\monitora}
+  (node.south);
 \end{tikzpicture}
-\caption{Componentes e limites da implantação. O diretório de dados não é publicado como conteúdo estático.}
+\caption{Limites da implantação e fluxos entre cliente, aplicação, persistência e supervisão. Somente a interface estática é publicada.}
 \label{fig:admin-architecture}
 \end{figure}
 
