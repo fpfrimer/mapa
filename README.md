@@ -1,51 +1,126 @@
 # Mapa de Horários Acadêmicos
 
-Aplicação front-end simples para construir cronogramas semanais de cursos.
+Aplicação web para montar, validar, salvar e imprimir mapas semanais por período, docente ou sala. O projeto usa JavaScript no navegador e um servidor HTTP em Node.js, sem dependências de runtime.
 
-## Como usar
+## Documentação
 
-1. Acesse `http://localhost:3000` (após iniciar o servidor) em um navegador moderno (Chrome, Edge, Firefox).
-2. Utilize o trilho de ícones fixo à esquerda para abrir o painel de cadastros de períodos, docentes, salas, disciplinas ou configurações. Cada botão exibe uma dica ao passar o mouse e, ao clicar, mantém o painel correspondente aberto até que você feche manualmente. Após o ícone de configurações há um botão adicional para alternar rapidamente entre o modo claro e o modo noturno.
-3. Ao cadastrar disciplinas é possível informar um código opcional, que é validado para evitar duplicidade. A aplicação sugere automaticamente uma cor distinta para cada disciplina dentro do período selecionado, mas você pode ajustá-la pelo seletor exibido no formulário (a escolha é mantida nas listas, no mapa e nos dados exportados).
-4. Defina também, se desejar, a quantidade prevista de horários para cada disciplina. A lista de disciplinas destaca cargas pendentes ou excedentes e as células excedentes do mapa recebem um alerta visual.
-5. No cadastro de docentes você pode, opcionalmente, vincular um docente a várias disciplinas utilizando o seletor com os botões **+** e **−**, além de marcar se ele pertence à área específica do curso. Essas informações alimentam as sugestões exibidas no modal de atribuição, mas continuam totalmente opcionais para manter flexibilidade.
-6. A faixa azul superior reúne os controles de visualização. Selecione o tipo de visão (período, docente ou sala) no primeiro campo e, em seguida, escolha o item desejado pelo seletor com busca. Nessa mesma faixa você encontra o botão de seleção múltipla, o resumo dos horários marcados e as ações para editar ou limpar a seleção. O painel de resumo acima da grade apresenta dados da seleção atual:
-   * **Período** – lista todas as disciplinas daquele período com os docentes atribuídos, horários no formato M1, M2, etc., e o status da carga prevista (faltando, completa ou excedida).
-   * **Docente** – informa o total de aulas e de horas configuradas, destaca as disciplinas vinculadas e detalha em quais períodos e horários o docente está alocado.
-   * **Sala** – mostra a porcentagem de ocupação semanal da sala e todas as reservas agrupadas por horário, identificando rapidamente eventuais conflitos no mesmo bloco.
+- [Manual do Usuário](docs/manual/manual-usuario.tex): acesso, semestres, cadastros, grade, conflitos e impressão.
+- [Manual do Administrador](docs/manual/manual-administrador.tex): implantação Ubuntu/systemd, segurança, usuários, backup, restauração e diagnóstico.
+- [Fontes e figuras dos manuais](docs/manual/): documentos A4 em português, identidade UTFPR e capturas Playwright com dados sintéticos.
 
-7. Clique em um bloco do cronograma para atribuir/editar uma disciplina. O botão **Ativar seleção múltipla** da barra superior permite marcar vários horários ao mesmo tempo e aplicar a mesma configuração para todos, inclusive substituindo lançamentos existentes quando desejar. As células preenchidas exibem a disciplina com sua cor dedicada e os dias da semana permanecem fixos no topo para facilitar a navegação. Use os botões **Editar seleção** e **Limpar** para confirmar ou desfazer a seleção em lote.
-8. Para reposicionar rapidamente um horário já configurado, clique e arraste o bloco desejado em qualquer visão (período, docente ou sala). As células compatíveis ficam verdes e as incompatíveis vermelhas conforme você move o mouse; a movimentação só é concluída quando o novo horário estiver livre para o período, sala e docente envolvidos.
-9. O painel de edição sugere docentes e salas livres naquele horário, indicando com destaque os docentes vinculados à disciplina escolhida e sinalizando quando o docente pertence à área do curso; conflitos continuam sendo validados ao salvar seleções múltiplas.
-10. Utilize a seção **Configurações** para nomear o planejamento atual e clicar em **Salvar configuração**. A lista abaixo é carregada do servidor e permite abrir, exportar ou remover cronogramas diretamente pelo painel (use **Atualizar lista** sempre que quiser sincronizar o conteúdo com outras pessoas ou abas).
-11. Ainda nas configurações, mantenha um rascunho rápido no navegador com os botões de salvar/recarregar, exporte um JSON da versão atual ou importe arquivos salvos anteriormente — o conteúdo importado é carregado imediatamente, gravado no servidor com o nome informado (ou com o carimbo de data e hora da importação) e também mantém o rascunho local atualizado.
+Os PDFs são compilados pela CI e publicados no artefato `manuais-mapa-horarios`; os binários não são mantidos no histórico Git.
 
-12. Quando preferir um contraste mais suave para ambientes escuros, utilize o botão com o ícone de lua no final do trilho lateral para alternar o modo noturno (a preferência fica guardada no seu navegador).
+## Requisitos e início rápido
 
-O cronograma em edição continua sendo preservado automaticamente no armazenamento local do navegador para facilitar rascunhos rápidos. As configurações nomeadas, porém, passam a ser guardadas no servidor e ficam disponíveis para qualquer pessoa que acesse a mesma instância da aplicação.
+- Node.js 20 ou superior.
+- Um segredo JWT com pelo menos 32 caracteres para uso em produção.
+- Pelo menos um usuário cadastrado para acessar a biblioteca de semestres.
 
-## Ícones reutilizáveis
+```bash
+npm ci
+./scripts/add-user.sh editor 'uma-senha-forte'
+JWT_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")" npm start
+```
 
-Todos os botões utilizam o sprite `assets/icons/ui-icons.svg`. Além dos símbolos já existentes para ações como salvar, excluir ou importar, a biblioteca agora também oferece `icon-refresh` (atualizar listas) e `icon-duplicate` (duplicar semestres) prontos para serem reutilizados em novos componentes que precisem dessas interações visuais.
+O servidor escuta apenas em `127.0.0.1:3000` por padrão. Acesse `http://127.0.0.1:3000`. Para disponibilizá-lo diretamente na rede interna, configure `HOST=0.0.0.0` e restrinja a porta com firewall; prefira um proxy reverso com HTTPS.
 
-## Executando o servidor
+## Segurança e autenticação
 
-1. Com o Node.js instalado, execute `npm start` na pasta do projeto. O servidor integrado não possui dependências externas e inicializa diretamente com `node server.js`.
-2. A interface web e os endpoints REST ficam disponíveis em `http://localhost:3000`.
-3. Os cronogramas nomeados são gravados no arquivo `data/configurations.json` (criado automaticamente caso não exista). É possível fazer backup manual deste arquivo ou versioná-lo de acordo com a sua necessidade.
+Somente os arquivos da interface (`index.html`, CSS, JavaScript e sprites SVG) são publicados. Arquivos em `data/`, scripts administrativos, código do servidor e metadados Git nunca são servidos por HTTP.
 
-### Persistência de dados
+Todas as operações de `/api/configurations`, inclusive leitura, exigem `Authorization: Bearer <token>`. Tokens ficam no `sessionStorage` e expiram após uma hora por padrão. O login limita tentativas inválidas por endereço durante uma janela de 15 minutos.
 
-A aplicação combina dois mecanismos de armazenamento:
+Variáveis de ambiente:
 
-* **Rascunho local** – o estado atual permanece no `localStorage` do navegador, permitindo continuar de onde parou mesmo sem salvar no servidor.
-* **Biblioteca no servidor** – cada configuração nomeada é enviada para a API e fica disponível na lista de configurações, podendo ser carregada, sobrescrita, exportada ou removida pela interface.
+| Variável | Padrão | Uso |
+| --- | --- | --- |
+| `JWT_SECRET` | temporário apenas em desenvolvimento | Segredo de no mínimo 32 caracteres; obrigatório com `NODE_ENV=production`. |
+| `AUTH_TOKEN_TTL_MS` | `3600000` | Duração da sessão em milissegundos. |
+| `HOST` | `127.0.0.1` | Endereço em que o servidor escuta. |
+| `PORT` | `3000` | Porta HTTP. |
+| `MAPA_DATA_DIR` | `./data` | Diretório externo ou local usado para usuários e configurações. |
 
-### Gerenciamento de usuários
+Não salve `JWT_SECRET` no repositório. O `setup.sh` cria `/etc/mapa-horarios.env` com permissão restrita e referencia esse arquivo no serviço systemd.
 
-Os endpoints de escrita exigem autenticação e o servidor lê as credenciais do arquivo `data/users.json`. Para facilitar a manutenção dessa lista, o repositório oferece dois utilitários em Bash:
+## Persistência e migração
 
-* `./scripts/add-user.sh <username> <senha>` – gera um hash `scrypt` compatível com o backend e acrescenta o usuário ao arquivo. Use `--id <valor>` para definir o identificador manualmente (caso contrário, ele é derivado do login) e `--file <caminho>` para apontar outro arquivo JSON.
-* `./scripts/remove-user.sh <username|id>` – exclui o usuário pelo login ou pelo campo `id`. Também aceita `--file <caminho>` para trabalhar com um repositório alternativo.
+O navegador mantém um rascunho no `localStorage`. A biblioteca compartilhada usa:
 
-Ambos os scripts criam o diretório `data/` automaticamente (se necessário) e validam o conteúdo do JSON antes de sobrescrevê-lo, prevenindo registros duplicados ou arquivos corrompidos.
+- `data/configurations.json` para semestres salvos;
+- `data/users.json` para usuários e hashes `scrypt`.
+
+Esses arquivos são dados de runtime e não são mais versionados. Uma atualização não os remove do disco; faça backup antes de implantar:
+
+```bash
+cp data/configurations.json data/configurations.backup.json
+cp data/users.json data/users.backup.json
+```
+
+Instalações novas podem partir dos arquivos `data/*.example.json`. As gravações usam arquivo temporário e fila de mutações para evitar JSON parcial. Cada semestre possui `schemaVersion`, `revision`, datas e autores de criação/atualização. Registros antigos recebem esses campos em memória e só são migrados no próximo salvamento.
+
+Atualizações e exclusões usam revisão otimista: o cliente envia `If-Match: "<revision>"`. A ausência da revisão retorna `428`; uma revisão antiga retorna `409` com a revisão e o editor atuais. Na interface, um conflito nunca é sobrescrito automaticamente: é possível recarregar o servidor ou salvar o trabalho local como cópia.
+
+Como hashes e configurações já apareceram no histórico Git, após atualizar a implantação:
+
+1. Troque o `JWT_SECRET` e reinicie o serviço, invalidando sessões antigas.
+2. Mantenha uma segunda conta administrativa válida e redefina cada senha com `./scripts/remove-user.sh <usuário>` seguido de `./scripts/add-user.sh <usuário> <nova-senha>`.
+3. Revise o acesso ao repositório e aos backups. A reescrita do histórico não faz parte desta mudança e só deve ser feita com coordenação de todos os clones.
+
+## Uso da aplicação
+
+Após o login, crie ou abra um semestre. Os painéis laterais cadastram períodos, docentes, salas e disciplinas. A grade permite atribuição simples ou múltipla, arrastar horários compatíveis e visualizar conflitos e carga prevista.
+
+O modal de impressão aceita a visão atual ou todos os períodos, docentes e salas. “Visualizar” abre o documento sem imprimir; “Imprimir” usa o mesmo documento e chama a caixa de impressão. Os layouts normal e compacto geram uma página por mapa e preservam as cores das disciplinas.
+
+As configurações podem ser salvas no servidor, exportadas para JSON ou importadas novamente. O formato existente permanece compatível, mas entradas excessivamente grandes, profundas, com campos desconhecidos ou chaves perigosas são rejeitadas pela API.
+
+O cabeçalho usa localmente a marca oficial da UTFPR, sem alterações de cor ou proporção, acompanhada por “Campus Toledo” como texto independente. O arquivo `assets/brand/utfpr-logo.png` foi obtido da [página oficial da marca](https://www.utfpr.edu.br/comunicacao/design/marca-da-utfpr). Aplicam-se o [manual de identidade visual](https://www.utfpr.edu.br/comunicacao/design/manual-de-uso-da-identidade-visual-da-utfpr/identidade-visual-utfpr-2016-a4-1.pdf/@@download/file) e as orientações do [Ofício Circular SEI](https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=6226788&id_orgao_publicacao=0).
+
+Os ícones da interface usam exclusivamente [Lucide](https://lucide.dev/) outline, em grade 24×24 e traço de 2 px. Somente os símbolos utilizados são versionados no sprite local `assets/icons/lucide-icons.svg`; não há CDN, webfont ou dependência em runtime. A licença ISC e os avisos dos ícones derivados do Feather estão em `assets/icons/LICENSE-LUCIDE.txt`.
+
+## Administração de usuários
+
+```bash
+./scripts/add-user.sh <username> <senha>
+./scripts/remove-user.sh <username|id>
+```
+
+Ambos aceitam `--file <caminho>`. `add-user.sh` também aceita `--id <valor>`. Restrinja o diretório de dados ao usuário do serviço; o `setup.sh` aplica diretórios `750` e arquivos `640`.
+
+## Desenvolvimento e verificações
+
+```bash
+npm ci
+npm run lint
+npm test
+npm run test:e2e
+npm run check
+```
+
+- `npm test` cobre exposição de arquivos, autenticação, tokens, rate limit, validação e CRUD concorrente.
+- `npm run test:e2e` usa Playwright/Chromium para verificar login, edição, conflito, identidade responsiva e pré-visualização de impressão. O CI publica `utfpr-home.png` como artefato.
+- `npm run check:icons` verifica referências ausentes, símbolos ociosos, licença e regressões para o sprite antigo.
+- `npm run check:sensitive` falha se dados de runtime, segredo padrão ou chaves privadas forem adicionados ao Git.
+
+Em Linux, prepare o navegador local com `npx playwright install --with-deps chromium`. A automação em `.github/workflows/ci.yml` executa qualidade e navegador em jobs separados.
+
+## Manuais em LaTeX
+
+Os fontes dos manuais de usuário e administrador ficam em `docs/manual/`. As telas documentais são geradas pelo Playwright com dados sintéticos e ficam versionadas; os PDFs são artefatos de CI e não são adicionados ao Git.
+
+```bash
+npm run docs:figures  # atualiza as capturas da interface
+npm run docs:pdf      # compila os dois PDFs com latexmk
+npm run docs:check    # valida metadados, figuras e compilação
+npm run docs          # regenera figuras e executa a validação completa
+```
+
+Para compilar localmente em Ubuntu, instale `latexmk`, `texlive-latex-extra`, `texlive-lang-portuguese` e `texlive-fonts-recommended`. Os resultados são gravados em `docs/manual/build/manual-usuario.pdf` e `docs/manual/build/manual-administrador.pdf`.
+
+## Serviço systemd
+
+Execute `./setup.sh` com um usuário dedicado. O script instala dependências de runtime, protege `data/`, gera `/etc/mapa-horarios.env` quando necessário e instala `mapa-horarios.service`. Use `./stop.sh` para interromper o serviço.
+
+## Licença
+
+Consulte [LICENSE](LICENSE). Os ícones Lucide mantêm seus avisos próprios em [assets/icons/LICENSE-LUCIDE.txt](assets/icons/LICENSE-LUCIDE.txt).

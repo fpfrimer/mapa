@@ -1,0 +1,390 @@
+\chapter{Visão geral e responsabilidades}
+
+Este manual destina-se à pessoa responsável por instalar, atualizar, proteger e recuperar o serviço em Ubuntu com systemd. O administrador precisa de acesso ao diretório do projeto, ao usuário do serviço e, para operações do sistema, a \code{sudo}.
+
+\begin{noticebox}[Limite de suporte]
+A aplicação foi planejada para rede interna, mas deve ser operada com controles equivalentes aos de produção. Não publique a porta diretamente na Internet. Use proxy reverso com HTTPS, firewall e política institucional de acesso.
+\end{noticebox}
+
+\section{Arquitetura}
+
+O navegador carrega uma interface estática e chama a API HTTP do processo Node.js. A API autentica tokens e serializa mutações antes de gravar JSON por substituição atômica. Não há banco relacional nem dependência de runtime além do Node.js.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=12mm and 16mm,
+  box/.style={draw=Line,rounded corners=2pt,fill=Paper,minimum width=34mm,minimum height=12mm,align=center},
+  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+]
+\node[box] (browser) {Navegador\\HTML, CSS e JavaScript};
+\node[box,right=of browser] (node) {Servidor Node.js\\HTTP + API};
+\node[box,right=of node] (data) {Diretório de dados\\JSON protegido};
+\draw[flow,<->] (browser) -- node[midway,above,font=\scriptsize] {HTTPS/HTTP interno} (node);
+\draw[flow,<->] (node) -- node[midway,above,font=\scriptsize] {fila + troca atômica} (data);
+\node[box,below=of node] (systemd) {systemd\\ambiente e reinício};
+\draw[flow] (systemd) -- (node);
+\end{tikzpicture}
+\caption{Componentes e limites da implantação. O diretório de dados não é publicado como conteúdo estático.}
+\label{fig:admin-architecture}
+\end{figure}
+
+Somente \code{index.html}, folhas de estilo, JavaScript do navegador, logotipo e sprite de ícones pertencem à lista pública. Arquivos em \code{data/}, \code{.git/}, scripts, configuração e código do servidor devem sempre retornar negação ou não encontrado por HTTP, inclusive em caminhos codificados.
+
+\chapter{Instalação em Ubuntu}
+
+\section{Pré-requisitos}
+
+Use um usuário dedicado ou técnico que continuará proprietário dos dados e executará o serviço. São necessários Ubuntu suportado, acesso administrativo, Git para atualização e Node.js 20 ou superior. Reserve um diretório estável, por exemplo \code{/opt/mapa-horarios}, e um diretório de dados incluído na rotina de backup.
+
+\begin{enumerate}
+  \item Obtenha o projeto pelo canal institucional autorizado.
+  \item Entre no diretório e revise \code{setup.sh} antes da primeira execução.
+  \item Execute o script como o mesmo usuário definido no serviço:
+\end{enumerate}
+
+\begin{lstlisting}
+cd /opt/mapa-horarios
+./setup.sh
+\end{lstlisting}
+
+O script verifica Node.js/npm, executa \code{npm ci --omit=dev}, protege o diretório de dados, cria \path{/etc/mapa-horarios.env} se ausente e instala \path{/etc/systemd/system/mapa-horarios.service}. O segredo gerado é preservado nas execuções posteriores.
+
+\section{Primeiro usuário}
+
+Depois da instalação, crie pelo menos um usuário e reinicie o serviço se necessário:
+
+\begin{lstlisting}
+./scripts/add-user.sh editor 'senha-longa-e-exclusiva'
+sudo systemctl restart mapa-horarios
+\end{lstlisting}
+
+Teste localmente \url{http://127.0.0.1:3000}. O padrão escuta somente no endereço de loopback.
+
+\section{Implantação e systemd}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=9mm,
+  processbox/.style={draw=Line,rounded corners=2pt,fill=Paper,minimum width=65mm,minimum height=10mm,align=center},
+  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+]
+\node[processbox] (env) {\code{/etc/mapa-horarios.env}\\segredo, host e dados};
+\node[processbox,below=of env] (unit) {\code{mapa-horarios.service}\\usuário e diretório de trabalho};
+\node[processbox,below=of unit] (process) {\code{node server.js}\\\code{127.0.0.1:3000}};
+\node[processbox,below=of process] (proxy) {Proxy HTTPS/rede interna\\controle de acesso e firewall};
+\draw[flow] (env) -- (unit);
+\draw[flow] (unit) -- (process);
+\draw[flow] (proxy) -- (process);
+\end{tikzpicture}
+\caption{Relação entre ambiente protegido, unidade systemd, processo e acesso de rede.}
+\label{fig:admin-deployment}
+\end{figure}
+
+\chapter{Configuração segura}
+
+\section{Variáveis de ambiente}
+
+Mantenha as variáveis em \code{/etc/mapa-horarios.env}, com leitura restrita ao administrador e ao usuário do serviço.
+
+\begin{longtable}{@{}p{0.27\textwidth}p{0.18\textwidth}p{0.49\textwidth}@{}}
+\toprule
+\textbf{Variável} & \textbf{Padrão} & \textbf{Finalidade} \\
+\midrule
+\endhead
+\code{JWT\_SECRET} & nenhum em produção & Segredo de no mínimo 32 caracteres. A inicialização falha se estiver ausente ou fraco com \code{NODE\_ENV=production}. \\
+\code{AUTH\_TOKEN\_TTL\_MS} & \code{3600000} & Duração da sessão em milissegundos. \\
+\code{HOST} & \code{127.0.0.1} & Interface de rede em que o processo escuta. \\
+\code{PORT} & \code{3000} & Porta HTTP do processo. \\
+\code{MAPA\_DATA\_DIR} & \code{./data} & Diretório de usuários e configurações. \\
+\bottomrule
+\end{longtable}
+
+Exemplo mínimo:
+
+\begin{lstlisting}
+JWT_SECRET=valor-aleatorio-com-pelo-menos-32-caracteres
+HOST=127.0.0.1
+PORT=3000
+MAPA_DATA_DIR=/var/lib/mapa-horarios
+AUTH_TOKEN_TTL_MS=3600000
+\end{lstlisting}
+
+Depois de editar o ambiente:
+
+\begin{lstlisting}
+sudo systemctl restart mapa-horarios
+sudo systemctl --no-pager --full status mapa-horarios
+\end{lstlisting}
+
+\section{Autenticação}
+
+O login confere um hash \code{scrypt} e emite um token assinado, armazenado no \code{sessionStorage} do navegador. Toda operação da biblioteca, inclusive leitura, exige \code{Authorization: Bearer}. Tokens expirados, adulterados ou malformados são recusados; respostas de login não revelam se o usuário existe.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=10mm and 13mm,
+  box/.style={draw=Line,rounded corners=2pt,fill=Paper,minimum width=34mm,minimum height=10mm,align=center},
+  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+]
+\node[box] (login) {Usuário + senha};
+\node[box,right=of login] (verify) {Verificação scrypt\\e limite de tentativas};
+\node[box,right=of verify] (token) {Token assinado\\com expiração};
+\node[box,below=of token] (api) {API protegida};
+\draw[flow] (login) -- (verify);
+\draw[flow] (verify) -- (token);
+\draw[flow] (token) -- node[right,font=\scriptsize] {Bearer} (api);
+\end{tikzpicture}
+\caption{Fluxo de autenticação. Credenciais e tokens nunca devem aparecer em logs ou documentação.}
+\label{fig:admin-auth}
+\end{figure}
+
+\chapter{Usuários}
+
+\section{Criar e remover}
+
+Os scripts usam \code{data/users.json} por padrão ou o arquivo indicado com \code{--file}. Execute-os como o usuário do serviço para preservar propriedade e permissões.
+
+\begin{lstlisting}
+./scripts/add-user.sh <username> '<senha>'
+./scripts/add-user.sh <username> '<senha>' --id user-identificador
+./scripts/remove-user.sh <username-ou-id>
+\end{lstlisting}
+
+Não passe senhas em histórico compartilhado ou gravação de terminal. Após criar ou remover, confirme que o arquivo continua com modo \code{640} e diretórios com \code{750}.
+
+\section{Redefinir senha}
+
+Não existe comando de alteração direta. Para evitar ficar sem acesso, mantenha uma segunda conta administrativa válida, remova a conta antiga e adicione-a novamente com nova senha:
+
+\begin{lstlisting}
+./scripts/add-user.sh administrador-temporario '<senha-temporaria>'
+./scripts/remove-user.sh editor
+./scripts/add-user.sh editor '<nova-senha-forte>'
+./scripts/remove-user.sh administrador-temporario
+\end{lstlisting}
+
+Faça backup de \code{users.json} antes da operação e teste a nova conta em uma sessão anônima.
+
+\chapter{Dados, revisões e concorrência}
+
+O diretório configurado contém \code{users.json} e \code{configurations.json}. Ambos são arrays JSON e dados de runtime; não devem ser adicionados ao Git. Os arquivos \code{*.example.json} vazios servem somente para instalações novas.
+
+Cada configuração contém identificador, nome, \code{schemaVersion}, \code{revision}, datas, autores, estado da interface e contadores. Registros antigos são normalizados em memória e persistem os novos metadados no próximo salvamento válido.
+
+\section{Revisão otimista e escrita atômica}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=9mm,
+  processbox/.style={draw=Line,rounded corners=2pt,fill=Paper,text width=48mm,minimum height=9mm,align=center},
+  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+]
+\node[processbox] (request) {Cliente envia \code{If-Match: "revision"}};
+\node[processbox,below=of request] (compare) {Servidor compara com a revisão atual};
+\node[processbox,below left=9mm and 2mm of compare] (conflict) {Divergente\\\code{409 Conflict}};
+\node[processbox,below right=9mm and 2mm of compare] (queue) {Igual\\entra na fila};
+\node[processbox,below=of queue] (atomic) {Grava temporário, substitui original\\e incrementa revisão};
+\draw[flow] (request) -- (compare);
+\draw[flow] (compare) -- (conflict);
+\draw[flow] (compare) -- (queue);
+\draw[flow] (queue) -- (atomic);
+\end{tikzpicture}
+\caption{Controle de concorrência. Sem o cabeçalho de revisão, uma atualização ou exclusão retorna o estado HTTP 428.}
+\label{fig:admin-revision}
+\end{figure}
+
+Uma revisão divergente nunca é sobrescrita automaticamente. A interface permite recarregar a versão do servidor ou criar uma cópia. A fila serializa mutações no mesmo processo e a troca atômica evita JSON parcial. Esse modelo não é indicado para múltiplas instâncias compartilhando o mesmo diretório.
+
+\chapter{Backup e restauração}
+
+\section{Política mínima}
+
+Faça backup dos dois arquivos, mantenha cópias fora do servidor e teste restaurações periodicamente. Proteja backups como credenciais, pois \code{users.json} contém hashes e as configurações podem conter informações acadêmicas.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=7mm,
+  processbox/.style={draw=Line,rounded corners=2pt,fill=Paper,minimum width=75mm,minimum height=9mm,align=center},
+  flow/.style={-{Latex[length=2mm]},thick,color=Slate}
+]
+\node[processbox] (stop) {Parar serviço};
+\node[processbox,below=of stop] (copy) {Copiar os dois JSON para destino protegido};
+\node[processbox,below=of copy] (validate) {Validar integridade e registrar data};
+\node[processbox,below=of validate] (start) {Iniciar serviço e testar login/biblioteca};
+\draw[flow] (stop) -- (copy);
+\draw[flow] (copy) -- (validate);
+\draw[flow] (validate) -- (start);
+\end{tikzpicture}
+\caption{Fluxo conservador para backup consistente ou restauração.}
+\label{fig:admin-backup}
+\end{figure}
+
+\section{Criar backup consistente}
+
+Substitua os caminhos pelos valores reais e use um diretório novo com data explícita:
+
+\begin{lstlisting}
+sudo systemctl stop mapa-horarios
+sudo install -d -m 700 /srv/backups/mapa/2026-08-01
+sudo cp /var/lib/mapa-horarios/configurations.json /srv/backups/mapa/2026-08-01/
+sudo cp /var/lib/mapa-horarios/users.json /srv/backups/mapa/2026-08-01/
+node -e "JSON.parse(require('fs').readFileSync(process.argv[1]))" \
+  /srv/backups/mapa/2026-08-01/configurations.json
+node -e "JSON.parse(require('fs').readFileSync(process.argv[1]))" \
+  /srv/backups/mapa/2026-08-01/users.json
+sudo systemctl start mapa-horarios
+\end{lstlisting}
+
+\section{Restaurar}
+
+\begin{dangerbox}
+A restauração substitui o estado atual. Antes dela, faça uma cópia de emergência dos arquivos existentes, mesmo quando estiverem possivelmente corrompidos.
+\end{dangerbox}
+
+\begin{lstlisting}
+sudo systemctl stop mapa-horarios
+sudo cp /var/lib/mapa-horarios/configurations.json /tmp/configurations.pre-restore.json
+sudo cp /var/lib/mapa-horarios/users.json /tmp/users.pre-restore.json
+sudo cp /srv/backups/mapa/2026-08-01/configurations.json /var/lib/mapa-horarios/
+sudo cp /srv/backups/mapa/2026-08-01/users.json /var/lib/mapa-horarios/
+sudo chown mapa:mapa /var/lib/mapa-horarios/*.json
+sudo chmod 640 /var/lib/mapa-horarios/*.json
+sudo systemctl start mapa-horarios
+\end{lstlisting}
+
+Troque \code{mapa:mapa} pelo usuário e grupo reais da unidade. Verifique status, logs, login, quantidade de semestres e abertura de um registro.
+
+\chapter{Atualização, rotação e recuperação}
+
+\section{Atualização segura}
+
+\begin{enumerate}
+  \item Anuncie a janela e confirme que não há edição em andamento.
+  \item Registre o commit atual e faça backup dos dados e do arquivo de ambiente.
+  \item Pare o serviço.
+  \item Atualize o código pelo fluxo Git aprovado, sem apagar o diretório de dados.
+  \item Execute \code{npm ci --omit=dev} e as verificações disponíveis em uma cópia limpa.
+  \item Inicie o serviço, acompanhe logs e faça um teste funcional.
+\end{enumerate}
+
+\begin{lstlisting}
+git rev-parse HEAD
+sudo systemctl stop mapa-horarios
+git pull --ff-only
+npm ci --omit=dev
+sudo systemctl start mapa-horarios
+sudo journalctl -u mapa-horarios -n 100 --no-pager
+\end{lstlisting}
+
+Se o teste falhar, pare o processo, retorne ao artefato/commit anteriormente aprovado pelo procedimento institucional, restaure o backup somente se o formato dos dados tiver sido alterado e documente a ocorrência. Não use comandos destrutivos sobre a raiz do projeto.
+
+\section{Rotacionar o segredo JWT}
+
+Gere um novo valor fora do repositório, substitua \code{JWT\_SECRET} no arquivo protegido e reinicie. Todas as sessões existentes serão invalidadas.
+
+\begin{lstlisting}
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
+sudoedit /etc/mapa-horarios.env
+sudo systemctl restart mapa-horarios
+\end{lstlisting}
+
+Faça a rotação após suspeita de exposição, mudança de responsáveis ou política periódica. Não registre o valor em chamados, logs ou histórico do shell.
+
+\section{Arquivos JSON inválidos}
+
+Se o processo relatar JSON inválido:
+
+\begin{enumerate}
+  \item pare o serviço e preserve uma cópia do arquivo problemático;
+  \item valide sintaxe sem imprimir o conteúdo em um canal compartilhado;
+  \item restaure o backup íntegro mais recente;
+  \item aplique propriedade e modo corretos;
+  \item inicie e valide a biblioteca.
+\end{enumerate}
+
+\chapter{Operação, logs e diagnóstico}
+
+\section{Comandos do serviço}
+
+\begin{lstlisting}
+sudo systemctl status mapa-horarios
+sudo systemctl restart mapa-horarios
+sudo systemctl stop mapa-horarios
+sudo systemctl start mapa-horarios
+sudo journalctl -u mapa-horarios -n 100 --no-pager
+sudo journalctl -u mapa-horarios -f
+\end{lstlisting}
+
+O projeto também fornece \code{./stop.sh}. Prefira os comandos systemd durante diagnóstico para manter uma única fonte de estado.
+
+\section{Problemas frequentes}
+
+\begin{longtable}{@{}p{0.31\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Sintoma} & \textbf{Verificação} \\
+\midrule
+\endhead
+Serviço não inicia em produção & Confira \code{JWT\_SECRET}, tamanho mínimo, permissões do arquivo de ambiente e logs. \\
+Porta já utilizada & Use \code{ss -ltnp}, identifique o processo autorizado ou altere \code{PORT}; atualize também o proxy. \\
+Login sempre falha & Valide \code{users.json}, propriedade, modo e relógio do servidor. Crie uma conta de teste temporária. \\
+API retorna 401/403 & Sessão ausente, expirada ou token inválido; faça novo login. \\
+API retorna 409 & Edição concorrente normal; preserve como cópia ou recarregue. \\
+API retorna 428 & Cliente de API não enviou \code{If-Match} em PUT/DELETE. \\
+Semestres desapareceram & Confira \code{MAPA\_DATA\_DIR}, usuário do serviço e montagem do volume antes de restaurar. \\
+Permissão negada ao salvar & Confirme propriedade do diretório, modo \code{750} e arquivos \code{640}. \\
+\bottomrule
+\end{longtable}
+
+\chapter{Verificação e checklists}
+
+Para desenvolvimento e homologação:
+
+\begin{lstlisting}
+npm ci
+npm run check
+npx playwright install --with-deps chromium
+npm run test:e2e
+npm run docs:check
+\end{lstlisting}
+
+\code{npm run check} executa lint, verificação de ícones, busca por dados sensíveis e testes de servidor. Playwright cobre o navegador. A documentação verifica metadados, figuras e compilação dos dois PDFs.
+
+\section{Após instalar ou atualizar}
+
+\begin{itemize}
+  \item[$\square$] Unidade ativa e sem reinícios repetidos.
+  \item[$\square$] Processo ouvindo somente no host e porta planejados.
+  \item[$\square$] HTTPS e firewall validados quando houver acesso pela rede.
+  \item[$\square$] Login válido e inválido testados sem revelar detalhes.
+  \item[$\square$] Biblioteca exige sessão e abre um semestre.
+  \item[$\square$] Salvamento, exportação e pré-visualização testados.
+  \item[$\square$] URLs de \code{data/}, \code{server.js} e \code{.git/} não expõem conteúdo.
+  \item[$\square$] Backup recente, íntegro e recuperável registrado.
+\end{itemize}
+
+\section{Após restaurar}
+
+\begin{itemize}
+  \item[$\square$] Ambos os arquivos são arrays JSON válidos.
+  \item[$\square$] Proprietário, grupo e modos conferidos.
+  \item[$\square$] Serviço iniciou sem erros de leitura.
+  \item[$\square$] Conta administrativa autenticou.
+  \item[$\square$] Quantidade e conteúdo amostral de semestres conferidos.
+  \item[$\square$] Cópia anterior à restauração mantida até a validação final.
+\end{itemize}
+
+\section{Resposta a incidente}
+
+\begin{itemize}
+  \item[$\square$] Preservar logs e evidências sem divulgar segredos.
+  \item[$\square$] Restringir acesso ou parar o serviço se houver exposição ativa.
+  \item[$\square$] Rotacionar JWT e redefinir credenciais afetadas.
+  \item[$\square$] Verificar integridade de código, ambiente, usuários, dados e backups.
+  \item[$\square$] Restaurar somente de fonte confiável e testar.
+  \item[$\square$] Registrar causa, período, impacto e ação preventiva.
+\end{itemize}

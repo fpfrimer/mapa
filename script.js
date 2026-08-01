@@ -22,6 +22,10 @@ let counters = {
 
 let savedConfigurations = [];
 let currentProject = null;
+const workspaceSync = {
+  status: 'saved',
+  conflict: null
+};
 
 const searchQueries = {
   period: '',
@@ -81,7 +85,7 @@ const disciplineColorPalette = [
 const DEFAULT_DISCIPLINE_COLOR = disciplineColorPalette[0] || '#2962ff';
 
 const DARK_MODE_STORAGE_KEY = 'planner.darkMode';
-const ICON_SPRITE_PATH = 'assets/icons/ui-icons.svg';
+const ICON_SPRITE_PATH = 'assets/icons/lucide-icons.svg';
 
 function createIcon(symbolId, additionalClass = '') {
   if (!symbolId) return null;
@@ -93,18 +97,11 @@ function createIcon(symbolId, additionalClass = '') {
   svg.setAttribute('class', classNames.join(' '));
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
-  svg.setAttribute('role', 'img');  // Add role for better accessibility
 
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
-  use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
   use.setAttribute('href', reference);
   svg.appendChild(use);
-
-  // Add error handling to detect when the icon fails to load
-  svg.addEventListener('error', function(e) {
-    console.warn(`Failed to load icon: ${symbolId}`, e);
-  }, true);
 
   return svg;
 }
@@ -114,7 +111,6 @@ function updateIconReference(svgElement, symbolId) {
   const use = svgElement.querySelector('use');
   if (!use) return;
   const reference = `${ICON_SPRITE_PATH}#${symbolId}`;
-  use.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', reference);
   use.setAttribute('href', reference);
 }
 
@@ -342,6 +338,7 @@ const LOGIN_API_URL = '/api/login';
 const LOGOUT_API_URL = '/api/logout';
 const AUTH_STORAGE_KEY = 'planner.auth';
 const CURRENT_PROJECT_KEY = 'planner.currentProject';
+let printModalPreviousFocus = null;
 
 const professorFormDisciplineIds = new Set();
 
@@ -563,9 +560,11 @@ const elements = {
   printModal: document.getElementById('print-modal'),
   printForm: document.getElementById('print-form'),
   printCancelButton: document.getElementById('cancel-print'),
+  printModalClose: document.querySelector('#print-modal .modal-close'),
   previewPrintButton: document.getElementById('preview-print'),
   projectTitleName: document.getElementById('project-title-name'),
   projectTitleNameText: document.getElementById('project-title-name-text'),
+  workspaceSaveStatus: document.getElementById('workspace-save-status'),
   topBar: topBarElement,
   topBarDrawer: document.querySelector('.top-bar__drawer'),
   topBarCompactToggle: document.getElementById('top-bar-compact-toggle'),
@@ -649,7 +648,18 @@ const elements = {
   loginCloseButton: document.getElementById('login-modal-close'),
   loginFeedback: document.getElementById('login-feedback'),
   loginUsernameInput: document.getElementById('login-username'),
-  loginPasswordInput: document.getElementById('login-password')
+  loginPasswordInput: document.getElementById('login-password'),
+  appDialog: document.getElementById('app-dialog'),
+  appDialogClose: document.getElementById('app-dialog-close'),
+  appDialogTitle: document.getElementById('app-dialog-title'),
+  appDialogMessage: document.getElementById('app-dialog-message'),
+  appDialogInputField: document.getElementById('app-dialog-input-field'),
+  appDialogInputLabel: document.getElementById('app-dialog-input-label'),
+  appDialogInput: document.getElementById('app-dialog-input'),
+  appDialogFeedback: document.getElementById('app-dialog-feedback'),
+  appDialogCancel: document.getElementById('app-dialog-cancel'),
+  appDialogSecondary: document.getElementById('app-dialog-secondary'),
+  appDialogConfirm: document.getElementById('app-dialog-confirm')
 };
 
 function normalizeExpiresAt(value) {
@@ -693,6 +703,10 @@ function updateSessionControl(button, statusElement) {
   button.classList.toggle('is-authenticated', isAuthenticated);
   button.setAttribute('aria-label', actionLabel);
   button.title = actionLabel;
+  const sessionIcon = button.querySelector('.login-avatar .icon');
+  if (sessionIcon) {
+    updateIconReference(sessionIcon, isAuthenticated ? 'icon-logout' : 'icon-login');
+  }
   const initialsElement = button.querySelector('.login-avatar__initials');
   if (initialsElement) {
     initialsElement.textContent = isAuthenticated ? getUserInitials(username) : '';
@@ -833,6 +847,7 @@ function handleServerAuthError(status) {
   if (wasAuthenticated) {
     setStorageFeedback('Sessão expirada. Faça login novamente para continuar.', 'warning');
   }
+  openLoginModal();
 }
 
 function setLoginFeedback(message, variant = 'info') {
@@ -901,6 +916,7 @@ async function handleLoginSubmit(event) {
     applyAuthStateToUi();
     closeLoginModal();
     setStorageFeedback('Sessão autenticada com sucesso.', 'success');
+    await loadSavedConfigurationsFromServer();
   } catch (error) {
     console.error('Erro ao efetuar login.', error);
     setLoginFeedback('Não foi possível realizar o login. Tente novamente.', 'error');
@@ -3184,35 +3200,43 @@ function collectAssignmentErrors(periodId, data) {
   return [...new Set(errors)];
 }
 
-function buildCellContent(assignments, view) {
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlAttribute(value) {
+  return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function buildCellContent(assignments, view, options = {}) {
   if (!assignments.length) {
     return { html: '', errors: [] };  // Remover a exibição da palavra "Disponível"
   }
 
+  const snapshot = options.snapshot || null;
+  const compact = options.layout === 'compact';
+  const findById = (collection, id) => collection?.find((item) => item.id === id) || null;
+  const disciplineById = snapshot
+    ? (id) => findById(snapshot.disciplines, id)
+    : getDisciplineById;
+  const professorById = snapshot
+    ? (id) => findById(snapshot.professors, id)
+    : getProfessorById;
+  const roomById = snapshot ? (id) => findById(snapshot.rooms, id) : getRoomById;
+  const periodById = snapshot ? (id) => findById(snapshot.periods, id) : getPeriodById;
   const errorSet = new Set();
-  const escapeAttribute = (value) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
-  const escapeHtml = (value) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
   const hidePeriodLine = view === 'period';
   const hideProfessorLine = view === 'professor';
   const hideRoomLine = view === 'room';
 
   const parts = assignments.map(({ periodId, data }) => {
-    const discipline = getDisciplineById(data.disciplineId);
-    const professor = getProfessorById(data.professorId);
-    const room = getRoomById(data.roomId);
-    const period = getPeriodById(periodId);
+    const discipline = disciplineById(data.disciplineId);
+    const professor = professorById(data.professorId);
+    const room = roomById(data.roomId);
+    const period = periodById(periodId);
     const disciplineLabel = discipline ? formatDisciplineLabel(discipline) : '';
     const lines = [];
 
@@ -3223,14 +3247,14 @@ function buildCellContent(assignments, view) {
       );
     }
 
-    if (period && !hidePeriodLine) {
+    if (!compact && period && !hidePeriodLine) {
       lines.push(
-        `<span class="slot-line slot-line-period"><span class="badge period">${period.name}</span></span>`
+        `<span class="slot-line slot-line-period"><span class="badge period">${escapeHtml(period.name)}</span></span>`
       );
     }
 
-    if (professor && !hideProfessorLine) {
-      let professorLine = `<span class="badge docente">${professor.name}`;
+    if (!compact && professor && !hideProfessorLine) {
+      let professorLine = `<span class="badge docente">${escapeHtml(professor.name)}`;
       if (professor.isCourseArea) {
         professorLine +=
           '<span class="course-area-indicator" aria-hidden="true"></span><span class="visually-hidden">Docente da área do curso</span>';
@@ -3239,9 +3263,9 @@ function buildCellContent(assignments, view) {
       lines.push(`<span class="slot-line slot-line-professor">${professorLine}</span>`);
     }
 
-    if (room && !hideRoomLine) {
+    if (!compact && room && !hideRoomLine) {
       lines.push(
-        `<span class="slot-line slot-line-room"><span class="badge room">Sala ${room.name}</span></span>`
+        `<span class="slot-line slot-line-room"><span class="badge room">Sala ${escapeHtml(room.name)}</span></span>`
       );
     }
 
@@ -3257,12 +3281,14 @@ function buildCellContent(assignments, view) {
       }
     }
 
-    collectAssignmentErrors(periodId, data).forEach((error) => errorSet.add(error));
+    if (!snapshot) {
+      collectAssignmentErrors(periodId, data).forEach((error) => errorSet.add(error));
+    }
 
     const attributes = [];
     if (disciplineLabel) {
       const accessibleLabel = `Disciplina: ${disciplineLabel}`;
-      const escapedLabel = escapeAttribute(accessibleLabel);
+      const escapedLabel = escapeHtmlAttribute(accessibleLabel);
       attributes.push(`title="${escapedLabel}"`, `aria-label="${escapedLabel}"`);
     }
 
@@ -3276,7 +3302,7 @@ function buildCellContent(assignments, view) {
     const indicatorLabel = errors.length === 1 ? 'Erro' : 'Erros';
     const indicator = [
       `<span class="slot-error-indicator" aria-hidden="true">⚠️ ${indicatorLabel}</span>`,
-      `<span class="visually-hidden">${indicatorLabel}: ${errors.join('; ')}</span>`
+      `<span class="visually-hidden">${indicatorLabel}: ${escapeHtml(errors.join('; '))}</span>`
     ];
     parts.push(indicator.join(''));
   }
@@ -4789,6 +4815,142 @@ function setProjectHubFeedback(message, variant = 'info') {
   }
 }
 
+let activeDialogResolver = null;
+let appDialogPreviousFocus = null;
+
+function finishAppDialog(action) {
+  if (!elements.appDialog || elements.appDialog.classList.contains('hidden')) return;
+  const value = elements.appDialogInput?.value.trim() || '';
+  elements.appDialog.classList.add('hidden');
+  elements.appDialog.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+  const resolver = activeDialogResolver;
+  activeDialogResolver = null;
+  if (appDialogPreviousFocus && typeof appDialogPreviousFocus.focus === 'function') {
+    appDialogPreviousFocus.focus();
+  }
+  appDialogPreviousFocus = null;
+  if (resolver) resolver({ action, value });
+}
+
+function showAppDialog(options = {}) {
+  if (!elements.appDialog) return Promise.resolve({ action: 'cancel', value: '' });
+  if (activeDialogResolver) finishAppDialog('cancel');
+  const {
+    title = 'Confirmar ação',
+    message = '',
+    confirmLabel = 'Confirmar',
+    secondaryLabel = '',
+    inputLabel = '',
+    inputValue = '',
+    inputRequired = false,
+    danger = false
+  } = options;
+  elements.appDialogTitle.textContent = title;
+  elements.appDialogMessage.textContent = message;
+  elements.appDialogConfirm.textContent = confirmLabel;
+  elements.appDialogConfirm.classList.toggle('danger', danger);
+  elements.appDialogConfirm.classList.toggle('primary', !danger);
+  elements.appDialogSecondary.textContent = secondaryLabel;
+  elements.appDialogSecondary.hidden = !secondaryLabel;
+  elements.appDialogInputField.hidden = !inputLabel;
+  elements.appDialogInputLabel.textContent = inputLabel || 'Nome';
+  elements.appDialogInput.value = inputValue;
+  elements.appDialogInput.required = Boolean(inputRequired);
+  elements.appDialogFeedback.textContent = '';
+  appDialogPreviousFocus = document.activeElement;
+  elements.appDialog.classList.remove('hidden');
+  elements.appDialog.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(() => {
+    if (inputLabel) {
+      elements.appDialogInput.focus();
+      elements.appDialogInput.select();
+    } else {
+      elements.appDialogConfirm.focus();
+    }
+  });
+  return new Promise((resolve) => {
+    activeDialogResolver = resolve;
+  });
+}
+
+function bindAppDialogControls() {
+  if (!elements.appDialog) return;
+  elements.appDialogClose?.addEventListener('click', () => finishAppDialog('cancel'));
+  elements.appDialogCancel?.addEventListener('click', () => finishAppDialog('cancel'));
+  elements.appDialogSecondary?.addEventListener('click', () => finishAppDialog('secondary'));
+  elements.appDialogConfirm?.addEventListener('click', () => {
+    if (!elements.appDialogInputField.hidden && elements.appDialogInput.required && !elements.appDialogInput.value.trim()) {
+      elements.appDialogFeedback.textContent = 'Informe um valor para continuar.';
+      elements.appDialogInput.focus();
+      return;
+    }
+    finishAppDialog('confirm');
+  });
+  elements.appDialog.addEventListener('click', (event) => {
+    if (event.target === elements.appDialog) finishAppDialog('cancel');
+  });
+  elements.appDialogInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      elements.appDialogConfirm.click();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (elements.appDialog.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      finishAppDialog('cancel');
+      return;
+    }
+    if (event.key === 'Tab') {
+      const focusable = Array.from(elements.appDialog.querySelectorAll(
+        'button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden])'
+      )).filter((control) => control.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  });
+}
+
+function setWorkspaceSyncStatus(status, conflict = null) {
+  const labels = {
+    saved: 'Salvo',
+    dirty: 'Alterações não salvas',
+    saving: 'Salvando…',
+    conflict: 'Conflito'
+  };
+  workspaceSync.status = labels[status] ? status : 'saved';
+  workspaceSync.conflict = status === 'conflict' ? conflict : null;
+  if (currentProject) {
+    currentProject.syncStatus = workspaceSync.status;
+    persistCurrentProjectMetadata();
+  }
+  if (elements.workspaceSaveStatus) {
+    elements.workspaceSaveStatus.textContent = labels[workspaceSync.status];
+    elements.workspaceSaveStatus.dataset.status = workspaceSync.status;
+  }
+}
+
+function markWorkspaceDirty() {
+  if (currentProject && workspaceSync.status !== 'conflict') {
+    setWorkspaceSyncStatus('dirty');
+  }
+}
+
+function hasUnsavedWorkspaceChanges() {
+  return ['dirty', 'saving', 'conflict'].includes(workspaceSync.status);
+}
+
 function loadStoredProjectMetadata() {
   try {
     const raw = localStorage.getItem(CURRENT_PROJECT_KEY);
@@ -4801,7 +4963,20 @@ function loadStoredProjectMetadata() {
     if (!id && !name) {
       return null;
     }
-    return { id, name: name || 'Semestre sem título', savedAt };
+    return {
+      id,
+      name: name || 'Semestre sem título',
+      savedAt,
+      revision: Number.isInteger(parsed.revision) ? parsed.revision : null,
+      schemaVersion: Number.isInteger(parsed.schemaVersion) ? parsed.schemaVersion : null,
+      createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : null,
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : savedAt,
+      createdBy: typeof parsed.createdBy === 'string' ? parsed.createdBy : null,
+      updatedBy: typeof parsed.updatedBy === 'string' ? parsed.updatedBy : null,
+      syncStatus: ['saved', 'dirty', 'conflict'].includes(parsed.syncStatus)
+        ? parsed.syncStatus
+        : 'saved'
+    };
   } catch (error) {
     console.error('Erro ao carregar metadados do projeto atual.', error);
     return null;
@@ -4814,12 +4989,7 @@ function persistCurrentProjectMetadata() {
       localStorage.removeItem(CURRENT_PROJECT_KEY);
       return;
     }
-    const payload = {
-      id: currentProject.id || null,
-      name: currentProject.name || '',
-      savedAt: currentProject.savedAt || null
-    };
-    localStorage.setItem(CURRENT_PROJECT_KEY, JSON.stringify(payload));
+    localStorage.setItem(CURRENT_PROJECT_KEY, JSON.stringify(currentProject));
   } catch (error) {
     console.error('Erro ao guardar metadados do projeto atual.', error);
   }
@@ -4850,8 +5020,9 @@ function updateProjectChrome() {
     elements.currentProjectName.textContent = currentProject ? name : 'Nenhum semestre ativo';
   }
   if (elements.currentProjectUpdated) {
-    elements.currentProjectUpdated.textContent = currentProject?.savedAt
-      ? `Salvo em ${formatSavedConfigDate(currentProject.savedAt)}`
+    const editor = currentProject?.updatedBy ? ` por ${currentProject.updatedBy}` : '';
+    elements.currentProjectUpdated.textContent = currentProject?.updatedAt || currentProject?.savedAt
+      ? `Atualizado em ${formatSavedConfigDate(currentProject.updatedAt || currentProject.savedAt)}${editor}`
       : 'Nunca salvo';
   }
   const workspaceVisible = !document.body.classList.contains('hub-visible');
@@ -4966,11 +5137,13 @@ function commitProjectTitleEditing(options = {}) {
   const previousName = projectTitleEditingState.previousName || '';
   closeProjectTitleEditor();
   const updatedProject = {
+    ...currentProject,
     id: currentProject?.id || null,
     name: value,
     savedAt: currentProject?.savedAt || null
   };
   setCurrentProject(updatedProject);
+  markWorkspaceDirty();
   persistCurrentProjectMetadata();
   if (value !== previousName || !previousName) {
     synchronizeProjectTitleChange(value);
@@ -5010,7 +5183,16 @@ function setCurrentProject(project) {
     currentProject = {
       id: typeof project.id === 'string' && project.id ? project.id : null,
       name: getProjectDisplayName(project),
-      savedAt: typeof project.savedAt === 'string' ? project.savedAt : null
+      savedAt: typeof project.savedAt === 'string' ? project.savedAt : null,
+      revision: Number.isInteger(project.revision) ? project.revision : null,
+      schemaVersion: Number.isInteger(project.schemaVersion) ? project.schemaVersion : null,
+      createdAt: typeof project.createdAt === 'string' ? project.createdAt : null,
+      updatedAt: typeof project.updatedAt === 'string' ? project.updatedAt : project.savedAt || null,
+      createdBy: typeof project.createdBy === 'string' ? project.createdBy : null,
+      updatedBy: typeof project.updatedBy === 'string' ? project.updatedBy : null,
+      syncStatus: ['saved', 'dirty', 'conflict'].includes(project.syncStatus)
+        ? project.syncStatus
+        : workspaceSync.status
     };
   } else {
     currentProject = null;
@@ -5034,15 +5216,20 @@ function hasWorkspaceData() {
   );
 }
 
-function confirmProjectSwitch(targetLabel = '') {
-  if (!hasWorkspaceData()) return true;
+async function confirmProjectSwitch(targetLabel = '') {
+  if (!hasUnsavedWorkspaceChanges()) return true;
   const label = targetLabel ? ` "${targetLabel}"` : '';
-  return confirm(
-    `Abrir${label} substituirá o semestre em edição. Salve antes de continuar se não quiser perder alterações.`
-  );
+  const result = await showAppDialog({
+    title: 'Alterações não salvas',
+    message: `Abrir${label} substituirá as alterações locais. Salve antes de continuar se quiser preservá-las.`,
+    confirmLabel: 'Continuar sem salvar',
+    danger: true
+  });
+  return result.action === 'confirm';
 }
 
-function showProjectHub() {
+async function showProjectHub() {
+  if (!(await confirmProjectSwitch('tela inicial'))) return;
   document.body.classList.add('hub-visible');
   updateProjectChrome();
 }
@@ -5122,7 +5309,13 @@ function sanitizeServerConfiguration(entry) {
   return {
     id,
     name,
+    schemaVersion: Number.isInteger(entry.schemaVersion) ? entry.schemaVersion : 1,
+    revision: Number.isInteger(entry.revision) && entry.revision > 0 ? entry.revision : 1,
+    createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : savedAt,
+    updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : savedAt,
     savedAt,
+    createdBy: typeof entry.createdBy === 'string' ? entry.createdBy : 'legado',
+    updatedBy: typeof entry.updatedBy === 'string' ? entry.updatedBy : 'legado',
     state: statePayload,
     counters: countersPayload
   };
@@ -5131,13 +5324,23 @@ function sanitizeServerConfiguration(entry) {
 async function loadSavedConfigurationsFromServer(options = {}) {
   const { notify = false } = options;
   try {
+    if (!authState.isAuthenticated || !authState.token) {
+      savedConfigurations = [];
+      renderSavedConfigurations();
+      setProjectHubFeedback('Faça login para acessar os semestres salvos.', 'warning');
+      openLoginModal();
+      return savedConfigurations;
+    }
+    const headers = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${authState.token}`
+    };
     const response = await fetch(CONFIG_API_URL, {
       method: 'GET',
-      headers: {
-        Accept: 'application/json'
-      }
+      headers
     });
     if (!response.ok) {
+      handleServerAuthError(response.status);
       throw new Error(`Falha ao buscar configurações: ${response.status}`);
     }
     const data = await response.json();
@@ -5164,7 +5367,7 @@ async function loadSavedConfigurationsFromServer(options = {}) {
   }
 }
 
-async function sendConfigurationRequest(method, suffix = '', body = null) {
+async function sendConfigurationRequest(method, suffix = '', body = null, requestOptions = {}) {
   const url = suffix ? `${CONFIG_API_URL}/${encodeURIComponent(suffix)}` : CONFIG_API_URL;
   const options = {
     method,
@@ -5179,13 +5382,17 @@ async function sendConfigurationRequest(method, suffix = '', body = null) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
   }
+  if (Number.isInteger(requestOptions.revision) && requestOptions.revision > 0) {
+    options.headers['If-Match'] = `"${requestOptions.revision}"`;
+  }
 
   const response = await fetch(url, options);
   if (!response.ok) {
     handleServerAuthError(response.status);
-    const message = await response.text().catch(() => '');
-    const error = new Error(message || `Falha na requisição: ${response.status}`);
+    const details = await response.json().catch(() => null);
+    const error = new Error(details?.message || `Falha na requisição: ${response.status}`);
     error.status = response.status;
+    error.details = details;
     throw error;
   }
   if (response.status === 204) {
@@ -5208,7 +5415,7 @@ async function createServerConfigurationEntry(name, configuration) {
   return sanitizeServerConfiguration(data);
 }
 
-async function updateServerConfigurationEntry(id, name, configuration) {
+async function updateServerConfigurationEntry(id, name, configuration, revision) {
   const payload = {
     name,
     state: safeClone(configuration.state),
@@ -5217,12 +5424,12 @@ async function updateServerConfigurationEntry(id, name, configuration) {
         ? safeClone(configuration.counters)
         : null
   };
-  const data = await sendConfigurationRequest('PUT', id, payload);
+  const data = await sendConfigurationRequest('PUT', id, payload, { revision });
   return sanitizeServerConfiguration(data);
 }
 
-async function deleteServerConfigurationEntry(id) {
-  await sendConfigurationRequest('DELETE', id);
+async function deleteServerConfigurationEntry(id, revision) {
+  await sendConfigurationRequest('DELETE', id, null, { revision });
 }
 
 function formatSavedConfigDate(isoString) {
@@ -5381,14 +5588,15 @@ function createProjectCardElement(config, index) {
 
   const meta = document.createElement('span');
   meta.className = 'project-card__meta';
-  const metaText = formatSavedConfigDate(config.savedAt);
-  meta.textContent = metaText ? `Atualizado em ${metaText}` : 'Sem data registrada';
+  const metaText = formatSavedConfigDate(config.updatedAt || config.savedAt);
+  const editor = config.updatedBy ? ` por ${config.updatedBy}` : '';
+  meta.textContent = metaText ? `Atualizado em ${metaText}${editor}` : 'Sem data registrada';
   body.appendChild(meta);
 
   if (isActive) {
     const badge = document.createElement('span');
-    badge.className = 'project-card__badge';
-    const badgeIcon = createIcon('icon-save', 'icon--small');
+    badge.className = 'project-card__badge project-card__badge--active';
+    const badgeIcon = createIcon('icon-saved', 'icon--small');
     if (badgeIcon) {
       badge.appendChild(badgeIcon);
     }
@@ -5457,7 +5665,7 @@ function createDraftProjectCard(index, projectMeta = currentProject) {
   body.appendChild(meta);
 
   const badge = document.createElement('span');
-  badge.className = 'project-card__badge';
+  badge.className = 'project-card__badge project-card__badge--draft';
   const icon = createIcon('icon-save', 'icon--small');
   if (icon) {
     badge.appendChild(icon);
@@ -5509,15 +5717,21 @@ function resumeLocalDraft() {
   renderSchedule();
 }
 
-function discardLocalDraft() {
-  const confirmed = confirm('Deseja descartar o rascunho local salvo no navegador?');
-  if (!confirmed) return;
+async function discardLocalDraft() {
+  const dialog = await showAppDialog({
+    title: 'Descartar rascunho',
+    message: 'As alterações guardadas apenas neste navegador serão removidas.',
+    confirmLabel: 'Descartar',
+    danger: true
+  });
+  if (dialog.action !== 'confirm') return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(COUNTERS_KEY);
   resetPlannerState({ persist: false });
   if (!currentProject || !currentProject.id) {
     setCurrentProject(null);
   }
+  setWorkspaceSyncStatus('saved');
   setProjectHubFeedback('Rascunho local removido.', 'warning');
 }
 
@@ -5529,7 +5743,7 @@ function applyConfigurationPayload(config) {
   } else {
     rebuildCounters();
   }
-  persistState();
+  persistState({ markDirty: false });
   // Ensure UI is updated after applying configuration
   refreshLists();
   updateEntitySelector();
@@ -5537,17 +5751,20 @@ function applyConfigurationPayload(config) {
   updateSelectionUI();
 }
 
-function openProjectFromConfig(config) {
+async function openProjectFromConfig(config) {
   if (!config) return;
   if (currentProject && currentProject.id === config.id) {
-    // Even if it's the same project, we should ensure it's properly applied
+    if (!(await confirmProjectSwitch(config.name))) return;
     applyConfigurationPayload(config);
+    setCurrentProject(config);
+    setWorkspaceSyncStatus('saved');
     hideProjectHub();
     return;
   }
-  if (!confirmProjectSwitch(config.name)) return;
+  if (!(await confirmProjectSwitch(config.name))) return;
   applyConfigurationPayload(config);
   setCurrentProject(config);
+  setWorkspaceSyncStatus('saved');
   hideProjectHub();
   setStorageFeedback(`Semestre "${config.name}" carregado com sucesso.`, 'success');
 }
@@ -5560,21 +5777,19 @@ async function renameServerProject(projectId, newName) {
   }
   const config = savedConfigurations[configIndex];
   try {
-    const updated = await updateServerConfigurationEntry(projectId, newName, {
-      state: config.state,
-      counters: config.counters
-    });
+    const updated = await updateServerConfigurationEntry(
+      projectId,
+      newName,
+      { state: config.state, counters: config.counters },
+      config.revision
+    );
     if (!updated) {
       throw new Error('Resposta inválida do servidor.');
     }
     savedConfigurations[configIndex] = updated;
     sortSavedConfigurations();
     if (currentProject?.id === projectId) {
-      setCurrentProject({
-        id: projectId,
-        name: newName,
-        savedAt: updated.savedAt || currentProject.savedAt || null
-      });
+      setCurrentProject(updated);
     } else {
       renderProjectHubList();
     }
@@ -5610,6 +5825,7 @@ function renameLocalDraftProject(newName) {
     }
     renderProjectHubList();
   }
+  markWorkspaceDirty();
   setProjectHubFeedback(`Rascunho renomeado para "${newName}".`, 'success');
 }
 
@@ -5618,14 +5834,14 @@ async function handleProjectCardTitleRename(target) {
   const projectId = target.dataset.projectId || '';
   const fallbackName = target.textContent ? target.textContent.replace(/^Rascunho:\s*/i, '') : '';
   const currentName = (target.dataset.projectName || fallbackName || '').trim();
-  const promptLabel = projectId
-    ? 'Qual o novo nome do semestre?'
-    : 'Qual o novo nome do rascunho local?';
-  const input = prompt(promptLabel, currentName);
-  if (input === null) {
-    return;
-  }
-  const trimmedName = input.trim();
+  const result = await showAppDialog({
+    title: projectId ? 'Renomear semestre' : 'Renomear rascunho',
+    inputLabel: 'Novo nome',
+    inputValue: currentName,
+    confirmLabel: 'Renomear'
+  });
+  if (result.action !== 'confirm') return;
+  const trimmedName = result.value.trim();
   if (!trimmedName) {
     setProjectHubFeedback('Informe um nome válido para renomear.', 'warning');
     return;
@@ -5667,7 +5883,7 @@ async function handleProjectListClick(event) {
     return;
   }
   if (action === 'discard-draft') {
-    discardLocalDraft();
+    await discardLocalDraft();
     return;
   }
   const configId = button.dataset.projectId;
@@ -5678,7 +5894,7 @@ async function handleProjectListClick(event) {
     return;
   }
   if (action === 'open') {
-    openProjectFromConfig(config);
+    await openProjectFromConfig(config);
     return;
   }
   if (action === 'export') {
@@ -5695,12 +5911,18 @@ async function handleProjectListClick(event) {
     const countersClone =
       config.counters && typeof config.counters === 'object' ? safeClone(config.counters) : null;
     const defaultName = config.name ? `Cópia de ${config.name}` : 'Cópia de semestre';
-    const inputName = prompt('Qual o nome da nova cópia do semestre?', defaultName);
-    if (inputName === null) {
+    const cloneDialog = await showAppDialog({
+      title: 'Duplicar semestre',
+      message: 'A cópia será criada como um novo semestre independente.',
+      inputLabel: 'Nome da cópia',
+      inputValue: defaultName,
+      confirmLabel: 'Duplicar'
+    });
+    if (cloneDialog.action !== 'confirm') {
       setProjectHubFeedback('Clonagem cancelada.', 'warning');
       return;
     }
-    const trimmedName = inputName.trim();
+    const trimmedName = cloneDialog.value.trim();
     if (!trimmedName) {
       setProjectHubFeedback('Informe um nome válido para concluir a clonagem.', 'warning');
       return;
@@ -5712,6 +5934,8 @@ async function handleProjectListClick(event) {
       );
       return;
     }
+
+    if (!(await confirmProjectSwitch(trimmedName))) return;
 
     applyConfigurationPayload({ state: stateClone, counters: countersClone });
 
@@ -5729,12 +5953,14 @@ async function handleProjectListClick(event) {
       savedConfigurations.push(createdEntry);
       sortSavedConfigurations();
       setCurrentProject(createdEntry);
+      setWorkspaceSyncStatus('saved');
       renderSavedConfigurations();
       hideProjectHub();
       setStorageFeedback(`Semestre "${createdEntry.name}" clonado com sucesso.`, 'success');
       setProjectHubFeedback(`Semestre "${createdEntry.name}" duplicado e sincronizado.`, 'success');
     } else {
       setCurrentProject({ id: null, name: trimmedName, savedAt: null });
+      setWorkspaceSyncStatus('dirty');
       hideProjectHub();
       setStorageFeedback('Semestre clonado localmente. Salve para sincronizar.', 'warning');
       setProjectHubFeedback('Semestre clonado localmente. Salve para sincronizar.', 'warning');
@@ -5742,15 +5968,21 @@ async function handleProjectListClick(event) {
     return;
   }
   if (action === 'delete') {
-    const confirmed = confirm(`Deseja remover o semestre "${config.name}" do servidor?`);
-    if (!confirmed) return;
+    const deletion = await showAppDialog({
+      title: 'Excluir semestre',
+      message: `O semestre "${config.name}" será removido do servidor.`,
+      confirmLabel: 'Excluir',
+      danger: true
+    });
+    if (deletion.action !== 'confirm') return;
     try {
-      await deleteServerConfigurationEntry(configId);
+      await deleteServerConfigurationEntry(configId, config.revision);
       savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
       renderSavedConfigurations();
       setProjectHubFeedback(`Semestre "${config.name}" removido.`, 'warning');
       if (currentProject?.id === configId) {
         setCurrentProject({ id: null, name: config.name, savedAt: null });
+        setWorkspaceSyncStatus('dirty');
       }
     } catch (error) {
       console.error('Erro ao remover semestre.', error);
@@ -5759,16 +5991,22 @@ async function handleProjectListClick(event) {
   }
 }
 
-function handleProjectCreate() {
-  const input = prompt('Qual o nome do novo semestre?');
-  const trimmed = input ? input.trim() : '';
+async function handleProjectCreate() {
+  const dialog = await showAppDialog({
+    title: 'Novo semestre',
+    inputLabel: 'Nome do semestre',
+    confirmLabel: 'Criar'
+  });
+  if (dialog.action !== 'confirm') return;
+  const trimmed = dialog.value.trim();
   if (!trimmed) {
     setProjectHubFeedback('Informe um nome para criar o semestre.', 'warning');
     return;
   }
-  if (!confirmProjectSwitch(trimmed)) return;
+  if (!(await confirmProjectSwitch(trimmed))) return;
   resetPlannerState();
   setCurrentProject({ id: null, name: trimmed, savedAt: null });
+  setWorkspaceSyncStatus('dirty');
   hideProjectHub();
   setProjectHubFeedback('');
 }
@@ -5797,7 +6035,7 @@ function handleProjectHubImport(event) {
           : `Importado em ${
               formatSavedConfigDate(new Date().toISOString()) || new Date().toLocaleString('pt-BR')
             }`;
-      if (!confirmProjectSwitch(fallbackName)) {
+      if (!(await confirmProjectSwitch(fallbackName))) {
         setProjectHubFeedback('Importação cancelada.', 'warning');
         return;
       }
@@ -5823,9 +6061,11 @@ function handleProjectHubImport(event) {
       }
       if (entry) {
         setCurrentProject(entry);
+        setWorkspaceSyncStatus('saved');
         setProjectHubFeedback(`Semestre "${entry.name}" importado e salvo.`, 'success');
       } else {
         setCurrentProject({ id: null, name: fallbackName, savedAt: null });
+        setWorkspaceSyncStatus('dirty');
         setProjectHubFeedback('Semestre importado apenas localmente. Salve para sincronizar.', 'warning');
       }
       renderSavedConfigurations();
@@ -5838,6 +6078,51 @@ function handleProjectHubImport(event) {
     }
   };
   reader.readAsText(file);
+}
+
+async function resolveWorkspaceConflict(conflictMetadata) {
+  const editor = conflictMetadata?.updatedBy ? ` por ${conflictMetadata.updatedBy}` : '';
+  const updatedAt = conflictMetadata?.updatedAt
+    ? ` em ${formatSavedConfigDate(conflictMetadata.updatedAt)}`
+    : '';
+  const resolution = await showAppDialog({
+    title: 'Conflito de edição',
+    message: `Este semestre foi atualizado${editor}${updatedAt}. Escolha como preservar o seu trabalho.`,
+    confirmLabel: 'Recarregar servidor',
+    secondaryLabel: 'Salvar como cópia'
+  });
+  if (resolution.action === 'confirm') {
+    await loadSavedConfigurationsFromServer();
+    const serverVersion = savedConfigurations.find((entry) => entry.id === currentProject?.id);
+    if (!serverVersion) {
+      setStorageFeedback('A versão do servidor não está mais disponível.', 'error');
+      return;
+    }
+    applyConfigurationPayload(serverVersion);
+    setCurrentProject(serverVersion);
+    setWorkspaceSyncStatus('saved');
+    setStorageFeedback('Versão mais recente do servidor carregada.', 'success');
+    return;
+  }
+  if (resolution.action === 'secondary') {
+    try {
+      setWorkspaceSyncStatus('saving');
+      const copy = await createServerConfigurationEntry(
+        `Cópia de ${getProjectDisplayName(currentProject)}`,
+        createConfigurationPackage()
+      );
+      savedConfigurations.push(copy);
+      sortSavedConfigurations();
+      setCurrentProject(copy);
+      setWorkspaceSyncStatus('saved');
+      renderSavedConfigurations();
+      setStorageFeedback(`Trabalho preservado como "${copy.name}".`, 'success');
+    } catch (error) {
+      console.error('Erro ao preservar conflito como cópia.', error);
+      setWorkspaceSyncStatus('conflict', conflictMetadata);
+      setStorageFeedback('Não foi possível salvar a cópia. As alterações locais foram preservadas.', 'error');
+    }
+  }
 }
 
 async function handleQuickSave(options = {}) {
@@ -5853,8 +6138,13 @@ async function handleQuickSave(options = {}) {
   }
   let name = currentProject?.name || '';
   if (!name) {
-    const input = prompt('Como deseja nomear este semestre?');
-    name = input ? input.trim() : '';
+    const dialog = await showAppDialog({
+      title: 'Salvar semestre',
+      inputLabel: 'Nome do semestre',
+      confirmLabel: 'Salvar'
+    });
+    if (dialog.action !== 'confirm') return 'cancelled';
+    name = dialog.value.trim();
     if (!name) {
       if (notify) {
         setStorageFeedback('Informe um nome para salvar o semestre.', 'warning');
@@ -5864,10 +6154,16 @@ async function handleQuickSave(options = {}) {
     setCurrentProject({ id: currentProject?.id || null, name, savedAt: currentProject?.savedAt || null });
   }
   const packageData = createConfigurationPackage();
+  setWorkspaceSyncStatus('saving');
   try {
     let entry;
     if (currentProject?.id) {
-      entry = await updateServerConfigurationEntry(currentProject.id, name, packageData);
+      entry = await updateServerConfigurationEntry(
+        currentProject.id,
+        name,
+        packageData,
+        currentProject.revision
+      );
     } else {
       entry = await createServerConfigurationEntry(name, packageData);
     }
@@ -5882,6 +6178,7 @@ async function handleQuickSave(options = {}) {
     }
     sortSavedConfigurations();
     setCurrentProject(entry);
+    setWorkspaceSyncStatus('saved');
     renderSavedConfigurations();
     if (notify) {
       setStorageFeedback(`Semestre "${entry.name}" salvo no servidor.`, 'success');
@@ -5890,6 +6187,12 @@ async function handleQuickSave(options = {}) {
     return 'success';
   } catch (error) {
     console.error('Erro ao salvar semestre.', error);
+    if (error.status === 409) {
+      setWorkspaceSyncStatus('conflict', error.details?.current || null);
+      await resolveWorkspaceConflict(error.details?.current || null);
+      return 'conflict';
+    }
+    setWorkspaceSyncStatus('dirty');
     if (notify) {
       setStorageFeedback('Não foi possível salvar o semestre.', 'error');
     }
@@ -5927,10 +6230,13 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
 
   if (existingIndex >= 0) {
     if (!skipConfirmation) {
-      const confirmed = confirm(
-        `Já existe uma configuração chamada "${trimmedName}". Deseja substituir o conteúdo salvo?`
-      );
-      if (!confirmed) {
+      const overwrite = await showAppDialog({
+        title: 'Substituir configuração',
+        message: `Já existe uma configuração chamada "${trimmedName}".`,
+        confirmLabel: 'Substituir',
+        danger: true
+      });
+      if (overwrite.action !== 'confirm') {
         if (notify) {
           setStorageFeedback('Salvamento cancelado.', 'warning');
         }
@@ -5941,7 +6247,8 @@ async function upsertSavedConfiguration(name, configuration, options = {}) {
       const updated = await updateServerConfigurationEntry(
         savedConfigurations[existingIndex].id,
         trimmedName,
-        payload
+        payload,
+        savedConfigurations[existingIndex].revision
       );
       if (!updated) {
         throw new Error('Resposta inválida do servidor.');
@@ -5993,7 +6300,7 @@ async function handleSavedConfigurationsClick(event) {
   }
 
   if (action === 'load') {
-    openProjectFromConfig(config);
+    await openProjectFromConfig(config);
     return;
   }
 
@@ -6004,14 +6311,20 @@ async function handleSavedConfigurationsClick(event) {
 
   if (action === 'delete') {
     if (!ensureAuthForEditing()) return;
-    const confirmed = confirm(`Deseja remover a configuração "${config.name}" do servidor?`);
-    if (!confirmed) return;
+    const deletion = await showAppDialog({
+      title: 'Excluir configuração',
+      message: `A configuração "${config.name}" será removida do servidor.`,
+      confirmLabel: 'Excluir',
+      danger: true
+    });
+    if (deletion.action !== 'confirm') return;
     try {
-      await deleteServerConfigurationEntry(configId);
+      await deleteServerConfigurationEntry(configId, config.revision);
       savedConfigurations = savedConfigurations.filter((entry) => entry.id !== configId);
       renderSavedConfigurations();
       if (currentProject?.id === configId) {
         setCurrentProject({ id: null, name: config.name, savedAt: null });
+        setWorkspaceSyncStatus('dirty');
       }
       setStorageFeedback(`Configuração "${config.name}" removida do servidor.`, 'warning');
     } catch (error) {
@@ -6049,10 +6362,13 @@ function getPersistableSnapshot() {
 }
 
 function persistState(options = {}) {
-  const { notify = false } = options;
+  const { notify = false, markDirty = true } = options;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableSnapshot()));
     localStorage.setItem(COUNTERS_KEY, JSON.stringify(counters));
+    if (markDirty) {
+      markWorkspaceDirty();
+    }
     if (notify) {
       setStorageFeedback('Configuração salva no navegador.', 'success');
     }
@@ -6319,15 +6635,16 @@ function resetPlannerState(options = {}) {
   }
 }
 
-function clearAllData() {
+async function clearAllData() {
   if (!ensureAuthForEditing()) return;
-  const confirmed = confirm(
-    'Tem certeza de que deseja limpar o cronograma atual? As configurações nomeadas permanecerão salvas no servidor.'
-  );
-  if (!confirmed) return;
-  resetPlannerState({ persist: false });
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(COUNTERS_KEY);
+  const dialog = await showAppDialog({
+    title: 'Limpar cronograma',
+    message: 'O semestre salvo no servidor não será alterado até o próximo salvamento.',
+    confirmLabel: 'Limpar',
+    danger: true
+  });
+  if (dialog.action !== 'confirm') return;
+  resetPlannerState();
   setStorageFeedback('Cronograma atual limpo. As configurações nomeadas continuam disponíveis no servidor.', 'warning');
 }
 
@@ -6416,13 +6733,7 @@ function bindProjectControls() {
 
 function bindPrintControls() {
   if (elements.printToggle) {
-    console.log('Botão de impressão encontrado, adicionando evento');
-    elements.printToggle.addEventListener('click', () => {
-      console.log('Evento de clique no botão de impressão disparado');
-      openPrintModal();
-    });
-  } else {
-    console.log('Botão de impressão NÃO encontrado!');
+    elements.printToggle.addEventListener('click', openPrintModal);
   }
 
   if (elements.printModal) {
@@ -6431,8 +6742,6 @@ function bindPrintControls() {
         closePrintModal();
       }
     });
-  } else {
-    console.log('Modal de impressão NÃO encontrado!');
   }
 
   if (elements.printCancelButton) {
@@ -6441,11 +6750,14 @@ function bindPrintControls() {
     });
   }
 
-  if (elements.previewPrintButton) {
-    elements.previewPrintButton.addEventListener('click', () => {
-      // Implementar pré-visualização se necessário
-      alert('Pré-visualização será implementada em futura melhoria.');
+  if (elements.printModalClose) {
+    elements.printModalClose.addEventListener('click', () => {
+      closePrintModal();
     });
+  }
+
+  if (elements.previewPrintButton) {
+    elements.previewPrintButton.addEventListener('click', () => openPrintDocument({ autoPrint: false }));
   }
 
   if (elements.printForm) {
@@ -6453,7 +6765,7 @@ function bindPrintControls() {
   }
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !elements.printModal.classList.contains('hidden')) {
+    if (event.key === 'Escape' && elements.printModal && !elements.printModal.classList.contains('hidden')) {
       closePrintModal();
     }
   });
@@ -6988,6 +7300,7 @@ elements.entitySelector.addEventListener('change', (event) => {
 async function init() {
   setupDarkModeToggle();
   setupAuthControls();
+  bindAppDialogControls();
 
   // Load saved configurations from server first
   await loadSavedConfigurationsFromServer();
@@ -7009,21 +7322,31 @@ async function init() {
   currentProject = loadStoredProjectMetadata();
 
   // Verify that the current project still exists in the server list if it has an ID
-  if (currentProject && currentProject.id) {
+  if (currentProject && currentProject.id && authState.isAuthenticated) {
     const serverConfig = savedConfigurations.find(config => config.id === currentProject.id);
     if (!serverConfig) {
       // Current project not found in server list, reset it
       currentProject = null;
       persistCurrentProjectMetadata();
+    } else {
+      currentProject = {
+        ...serverConfig,
+        syncStatus: currentProject.syncStatus || 'saved'
+      };
+      persistCurrentProjectMetadata();
     }
   }
 
-  // If no current project but has local draft, check if it needs to be loaded
-  if (!currentProject && hasLocalDraft()) {
+  // Restore the browser snapshot for the active project, including pending edits.
+  if (currentProject && hasLocalDraft()) {
+    restoreStateFromStorage({ notify: false });
+  } else if (!currentProject && hasLocalDraft()) {
     restoreStateFromStorage({ notify: false });
     const storedMeta = loadStoredProjectMetadata();
     if (storedMeta) {
       setCurrentProject(storedMeta);
+    } else {
+      setCurrentProject({ id: null, name: 'Rascunho local', savedAt: null, syncStatus: 'dirty' });
     }
   }
 
@@ -7033,40 +7356,34 @@ async function init() {
   }
   updateEntitySelector();
   updateSelectionUI();
+  setWorkspaceSyncStatus(currentProject?.syncStatus || 'saved');
   setStorageFeedback('');
   updateProjectChrome();
   renderProjectHubList();
 }
 
+window.addEventListener('beforeunload', (event) => {
+  if (!hasUnsavedWorkspaceChanges()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
+
 function openPrintModal() {
-  console.log('openPrintModal chamada');
-  if (!elements.printModal) {
-    console.log('Modal não encontrado');
-    return;
-  }
+  if (!elements.printModal) return;
+  printModalPreviousFocus = document.activeElement;
   elements.printModal.classList.remove('hidden');
   elements.printModal.setAttribute('aria-hidden', 'false');
-
-  // Atualizar o nome da visão atual
+  const viewLabels = {
+    period: 'Período',
+    professor: 'Docente',
+    room: 'Sala',
+    free: 'Horário Livre'
+  };
   const currentViewName = document.getElementById('current-view-name');
-  if (currentViewName) {
-    let viewText = 'Período';
-    switch (state.view) {
-      case 'professor':
-        viewText = 'Docente';
-        break;
-      case 'room':
-        viewText = 'Sala';
-        break;
-      case 'free':
-        viewText = 'Horário Livre';
-        break;
-    }
-    currentViewName.textContent = viewText;
-  }
-
+  if (currentViewName) currentViewName.textContent = viewLabels[state.view] || 'Visão atual';
   document.body.classList.add('modal-open');
-  console.log('Modal aberto');
+  elements.printModalClose?.focus();
 }
 
 function closePrintModal() {
@@ -7074,175 +7391,238 @@ function closePrintModal() {
   elements.printModal.classList.add('hidden');
   elements.printModal.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('modal-open');
+  if (printModalPreviousFocus && typeof printModalPreviousFocus.focus === 'function') {
+    printModalPreviousFocus.focus();
+  }
+  printModalPreviousFocus = null;
+}
+
+function getSnapshotAssignmentsForSlot(snapshot, key) {
+  const assignments = [];
+  Object.entries(snapshot.schedule || {}).forEach(([periodId, slots]) => {
+    if (slots && slots[key]) assignments.push({ periodId, data: slots[key] });
+  });
+  return assignments;
+}
+
+function getSnapshotCellAssignments(snapshot, view, entityId, dayKey, slotCode) {
+  const key = slotKey(dayKey, slotCode);
+  if (!entityId) return [];
+  if (view === 'period') {
+    const assignment = snapshot.schedule?.[entityId]?.[key];
+    return assignment ? [{ periodId: entityId, data: assignment }] : [];
+  }
+  const assignments = getSnapshotAssignmentsForSlot(snapshot, key);
+  if (view === 'professor') {
+    return assignments.filter(({ data }) => data?.professorId === entityId);
+  }
+  if (view === 'room') {
+    return assignments.filter(({ data }) => data?.roomId === entityId);
+  }
+  return [];
+}
+
+function buildFreeStatusForPrint(snapshot, professorIds, dayKey, slotCode) {
+  const selected = new Set(Array.isArray(professorIds) ? professorIds : []);
+  if (!selected.size) return '';
+  const busy = new Set(
+    getSnapshotAssignmentsForSlot(snapshot, slotKey(dayKey, slotCode))
+      .map(({ data }) => data?.professorId)
+      .filter((id) => selected.has(id))
+  );
+  const freeCount = selected.size - busy.size;
+  const label = busy.size === 0
+    ? 'Todos livres'
+    : freeCount === 0
+      ? 'Todos ocupados'
+      : `${freeCount} de ${selected.size} livres`;
+  const statusClass = busy.size ? 'free-status free-status--busy' : 'free-status free-status--available';
+  return `<span class="${statusClass}">${escapeHtml(label)}</span>`;
+}
+
+function renderPrintableSchedule(snapshot, view, entityId, layout = 'normal') {
+  let html = '<table class="schedule-table"><thead><tr><th scope="col">Horário</th>';
+  days.forEach((day) => {
+    html += `<th scope="col">${escapeHtml(day.label)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  sessions.forEach((session) => {
+    html += `<tr class="session-row"><th colspan="${days.length + 1}">${escapeHtml(session.name)}</th></tr>`;
+    session.slots.forEach((slot) => {
+      html += `<tr><th scope="row" class="slot-label">${escapeHtml(`${slot.code} • ${slot.time}`)}</th>`;
+      days.forEach((day) => {
+        let content = '';
+        if (view === 'free') {
+          content = buildFreeStatusForPrint(snapshot, entityId, day.key, slot.code);
+        } else {
+          const assignments = getSnapshotCellAssignments(snapshot, view, entityId, day.key, slot.code);
+          content = buildCellContent(assignments, view, { snapshot, layout }).html;
+        }
+        html += `<td>${content}</td>`;
+      });
+      html += '</tr>';
+    });
+  });
+  return `${html}</tbody></table>`;
+}
+
+function getPrintableMap(snapshot, view, entityId, title) {
+  if (view === 'free') {
+    const ids = Array.isArray(entityId) ? entityId.filter(Boolean) : [];
+    return ids.length ? { view, entityId: ids, title } : null;
+  }
+  return entityId ? { view, entityId, title } : null;
+}
+
+function currentPrintMap(snapshot) {
+  const findName = (collection, id) => collection.find((item) => item.id === id)?.name || '';
+  if (snapshot.view === 'period') {
+    const name = findName(snapshot.periods, snapshot.selectedEntity);
+    return getPrintableMap(snapshot, 'period', snapshot.selectedEntity, name ? `Período: ${name}` : 'Período');
+  }
+  if (snapshot.view === 'professor') {
+    const name = findName(snapshot.professors, snapshot.selectedEntity);
+    return getPrintableMap(snapshot, 'professor', snapshot.selectedEntity, name ? `Docente: ${name}` : 'Docente');
+  }
+  if (snapshot.view === 'room') {
+    const name = findName(snapshot.rooms, snapshot.selectedEntity);
+    return getPrintableMap(snapshot, 'room', snapshot.selectedEntity, name ? `Sala: ${name}` : 'Sala');
+  }
+  if (snapshot.view === 'free') {
+    const names = snapshot.professors
+      .filter((professor) => snapshot.freeTimeProfessorIds.includes(professor.id))
+      .map((professor) => professor.name);
+    return getPrintableMap(snapshot, 'free', snapshot.freeTimeProfessorIds, `Horários livres: ${names.join(', ')}`);
+  }
+  return null;
+}
+
+function preparePrintMaps(snapshot, selections) {
+  const maps = [];
+  if (selections.currentView) {
+    const current = currentPrintMap(snapshot);
+    if (current) maps.push(current);
+  }
+  if (selections.allPeriods) {
+    snapshot.periods.forEach((period) => maps.push({
+      view: 'period', entityId: period.id, title: `Período: ${period.name}`
+    }));
+  }
+  if (selections.allProfessors) {
+    snapshot.professors.forEach((professor) => maps.push({
+      view: 'professor', entityId: professor.id, title: `Docente: ${professor.name}`
+    }));
+  }
+  if (selections.allRooms) {
+    snapshot.rooms.forEach((room) => maps.push({
+      view: 'room', entityId: room.id, title: `Sala: ${room.name}`
+    }));
+  }
+  return maps;
+}
+
+function generatePrintHTML(snapshot, maps, layout) {
+  const logoUrl = new URL('assets/brand/utfpr-logo.png', window.location.href).href;
+  const sections = maps.map((map) => `
+    <section class="print-map">
+      <h2>${escapeHtml(map.title)}</h2>
+      ${renderPrintableSchedule(snapshot, map.view, map.entityId, layout)}
+    </section>`).join('');
+  const compactStyles = layout === 'compact'
+    ? '.schedule-table{font-size:8px}.schedule-table th,.schedule-table td{padding:3px}.slot-content{font-size:7px}'
+    : '';
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mapas de horários</title>
+  <style>
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:Arial,sans-serif;margin:18px;color:#172033}
+    .print-brand{display:flex;align-items:center;gap:18px;padding:10px 0 16px;border-bottom:2px solid #ffbe00;margin-bottom:18px}
+    .print-brand img{display:block;width:112px;height:auto}.print-brand p{margin:2px 0;color:#4b5563;font-size:11px}
+    h1{font-size:20px;margin:0}h2{font-size:16px;margin:0 0 10px}
+    .print-map{break-after:page;page-break-after:always}.print-map:last-child{break-after:auto;page-break-after:auto}
+    .schedule-table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+    .schedule-table th,.schedule-table td{border:1px solid #aeb7c6;padding:5px;vertical-align:top;overflow-wrap:anywhere}
+    .schedule-table thead th,.session-row th{background:#edf2f7;text-align:left}
+    .schedule-table thead th:first-child,.slot-label{width:95px}.slot-line{display:block;margin-bottom:2px}
+    .badge{display:inline-block}.with-discipline-color{border-left:3px solid var(--discipline-color);background:var(--discipline-fill);padding:2px}
+    .free-status{display:block;font-weight:700}.free-status--available{color:#176b3a}.free-status--busy{color:#9a3412}
+    .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    ${compactStyles}
+    @page{size:landscape;margin:10mm}
+  </style>
+</head>
+<body>
+  <header class="print-brand">
+    <img src="${escapeHtmlAttribute(logoUrl)}" alt="UTFPR">
+    <div><h1>Mapas de horários</h1><p>Campus Toledo · Horários Acadêmicos e Logística</p></div>
+  </header>
+  ${sections}
+</body>
+</html>`;
+}
+
+function readPrintSelections() {
+  return {
+    currentView: Boolean(document.getElementById('print-current-view')?.checked),
+    allPeriods: Boolean(document.getElementById('print-all-periods')?.checked),
+    allProfessors: Boolean(document.getElementById('print-all-professors')?.checked),
+    allRooms: Boolean(document.getElementById('print-all-rooms')?.checked)
+  };
+}
+
+function openPrintDocument({ autoPrint }) {
+  const selections = readPrintSelections();
+  if (!Object.values(selections).some(Boolean)) {
+    alert('Selecione ao menos um mapa para visualizar ou imprimir.');
+    return;
+  }
+  const layout = document.querySelector('input[name="print-layout"]:checked')?.value || 'normal';
+  const snapshot = safeClone(getPersistableSnapshot());
+  const maps = preparePrintMaps(snapshot, selections);
+  if (!maps.length) {
+    alert('Não há mapas disponíveis para a seleção atual.');
+    return;
+  }
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('O navegador bloqueou a nova janela. Autorize popups para visualizar ou imprimir.');
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(generatePrintHTML(snapshot, maps, layout));
+  printWindow.document.close();
+  if (autoPrint) {
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+    const printWhenReady = async () => {
+      if (printWindow.document.fonts?.ready) {
+        await printWindow.document.fonts.ready;
+      }
+      await Promise.all(Array.from(printWindow.document.images).map((image) => {
+        if (image.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          image.addEventListener('load', resolve, { once: true });
+          image.addEventListener('error', resolve, { once: true });
+        });
+      }));
+      printWindow.focus();
+      printWindow.print();
+    };
+    if (printWindow.document.readyState === 'complete') {
+      printWhenReady();
+    } else {
+      printWindow.addEventListener('load', printWhenReady, { once: true });
+    }
+  }
+  closePrintModal();
 }
 
 function handlePrintSubmit(event) {
   event.preventDefault();
-
-  const selectedMaps = {
-    currentView: document.getElementById('print-current-view').checked,
-    allPeriods: document.getElementById('print-all-periods').checked,
-    allProfessors: document.getElementById('print-all-professors').checked,
-    allRooms: document.getElementById('print-all-rooms').checked
-  };
-
-  const layout = document.querySelector('input[name="print-layout"]:checked')?.value || 'normal';
-
-  // Preparar os dados para impressão
-  const printData = preparePrintData(selectedMaps);
-
-  // Gerar o HTML para impressão
-  const printWindow = window.open('', '_blank');
-  if (printWindow) {
-    printWindow.document.write(generatePrintHTML(printData, layout));
-    printWindow.document.close();
-    printWindow.focus();
-
-    // Esperar um pouco para garantir que o conteúdo foi carregado antes de imprimir
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
-  }
-
-  closePrintModal();
-}
-
-function preparePrintData(selections) {
-  const data = {};
-
-  // Visão atual
-  if (selections.currentView) {
-    data.currentView = {
-      view: state.view,
-      entity: state.selectedEntity,
-      title: document.getElementById('schedule-title')?.textContent || 'Visão Atual',
-      html: document.querySelector('.schedule-table')?.outerHTML || ''
-    };
-  }
-
-  // Todos os períodos
-  if (selections.allPeriods && state.periods.length > 0) {
-    data.allPeriods = [];
-    state.periods.forEach(period => {
-      // Simular troca de visão para obter o conteúdo
-      const originalView = state.view;
-      const originalEntity = state.selectedEntity;
-
-      state.view = 'period';
-      state.selectedEntity = period.id;
-
-      // Precisamos renderizar temporariamente para obter o conteúdo
-      // Isso pode ser complexo devido às dependências, então simplificando
-      data.allPeriods.push({
-        title: `Período: ${period.name}`,
-        html: '' // Conteúdo será obtido separadamente
-      });
-
-      // Restaurar os valores originais
-      state.view = originalView;
-      state.selectedEntity = originalEntity;
-    });
-  }
-
-  // Todos os professores
-  if (selections.allProfessors && state.professors.length > 0) {
-    data.allProfessors = [];
-    state.professors.forEach(professor => {
-      const originalView = state.view;
-      const originalEntity = state.selectedEntity;
-
-      state.view = 'professor';
-      state.selectedEntity = professor.id;
-
-      data.allProfessors.push({
-        title: `Docente: ${professor.name}`,
-        html: '' // Conteúdo será obtido separadamente
-      });
-
-      state.view = originalView;
-      state.selectedEntity = originalEntity;
-    });
-  }
-
-  // Todas as salas
-  if (selections.allRooms && state.rooms.length > 0) {
-    data.allRooms = [];
-    state.rooms.forEach(room => {
-      const originalView = state.view;
-      const originalEntity = state.selectedEntity;
-
-      state.view = 'room';
-      state.selectedEntity = room.id;
-
-      data.allRooms.push({
-        title: `Sala: ${room.name}`,
-        html: '' // Conteúdo será obtido separadamente
-      });
-
-      state.view = originalView;
-      state.selectedEntity = originalEntity;
-    });
-  }
-
-  return data;
-}
-
-function generatePrintHTML(data, layout) {
-  // Inclui estilos básicos para impressão
-  const printStyles = `
-    <style>
-      body { font-family: Arial, sans-serif; margin: 20px; }
-      .schedule-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-      .schedule-table th, .schedule-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-      .schedule-table th { background-color: #f5f5f5; }
-      .session-label { font-weight: bold; }
-      .slot-content { font-size: 0.7rem; }
-      .slot-line-discipline { font-weight: bold; }
-      .discipline { font-weight: bold; }
-      ${layout === 'compact' ? 'body { font-size: 0.8rem; } .slot-content { font-size: 0.6rem; }' : ''}
-    </style>
-  `;
-
-  let content = '<h1>Mapas de Horários</h1>';
-
-  if (data.currentView) {
-    content += `<h2>${data.currentView.title}</h2>${data.currentView.html}`;
-  }
-
-  if (data.allPeriods && data.allPeriods.length > 0) {
-    content += '<h2>Todos os Períodos</h2>';
-    data.allPeriods.forEach(item => {
-      content += `<h3>${item.title}</h3>`;
-    });
-  }
-
-  if (data.allProfessors && data.allProfessors.length > 0) {
-    content += '<h2>Todos os Docentes</h2>';
-    data.allProfessors.forEach(item => {
-      content += `<h3>${item.title}</h3>`;
-    });
-  }
-
-  if (data.allRooms && data.allRooms.length > 0) {
-    content += '<h2>Todas as Salas</h2>';
-    data.allRooms.forEach(item => {
-      content += `<h3>${item.title}</h3>`;
-    });
-  }
-
-  return `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Impressão de Mapas de Horários</title>
-        ${printStyles}
-      </head>
-      <body>
-        ${content}
-      </body>
-    </html>
-  `;
+  openPrintDocument({ autoPrint: true });
 }
 
 function startApp() {

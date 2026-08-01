@@ -18,6 +18,7 @@ SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 # Permissões padrão do diretório de dados. Ajuste para 770 antes de executar o script
 # caso outro grupo específico precise de acesso de escrita.
 DATA_DIR_PERMISSIONS="${DATA_DIR_PERMISSIONS:-750}"
+ENV_FILE="/etc/mapa-horarios.env"
 
 # --- Verificar se Node.js está instalado ---
 if ! command -v node >/dev/null 2>&1; then
@@ -48,7 +49,16 @@ sudo find "$BASE_DIR/data" -type f -exec chmod 640 {} + 2>/dev/null || true
 # --- Instalar dependências Node ---
 echo "Instalando dependências..."
 cd "$BASE_DIR"
-npm install
+npm ci --omit=dev
+
+# --- Criar configuração protegida do serviço ---
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Criando configuração segura em $ENV_FILE..."
+    JWT_SECRET_VALUE="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
+    sudo bash -c "umask 077; printf '%s\n' 'JWT_SECRET=$JWT_SECRET_VALUE' 'HOST=127.0.0.1' 'MAPA_DATA_DIR=$BASE_DIR/data' > '$ENV_FILE'"
+else
+    echo "Mantendo configuração existente em $ENV_FILE."
+fi
 
 # --- Criar serviço systemd ---
 echo "Criando serviço systemd..."
@@ -65,6 +75,7 @@ WorkingDirectory=$BASE_DIR
 ExecStart=/usr/bin/node $BASE_DIR/server.js
 Restart=always
 Environment=NODE_ENV=production
+EnvironmentFile=$ENV_FILE
 
 [Install]
 WantedBy=multi-user.target

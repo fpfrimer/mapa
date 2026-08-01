@@ -10,8 +10,20 @@
   <section id="project-hub" class="project-hub" aria-label="Projetos de semestre">
     <div class="project-hub__card project-hub__card--hero">
       <header class="project-hub__header">
-        <div class="project-hub__label">
-          <p class="project-hub__eyebrow">Horários Acadêmicos e Logística • HAL</p>
+        <div class="institutional-brand institutional-brand--hub">
+          <a
+            class="institutional-brand__logo"
+            href="https://www.utfpr.edu.br/comunicacao/design/marca-da-utfpr"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Marca oficial da UTFPR"
+          >
+            <img src="assets/brand/utfpr-logo.png" alt="Universidade Tecnológica Federal do Paraná" />
+          </a>
+          <div class="institutional-brand__text">
+            <span>Campus Toledo</span>
+            <h1>Horários Acadêmicos e Logística</h1>
+          </div>
         </div>
         <div class="project-hub__actions" aria-label="Ações da central de projetos">
           <div class="project-hub__actions-group" role="group" aria-label="Ações principais">
@@ -23,9 +35,9 @@
               title="Criar novo semestre"
             >
               <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-add" xlink:href="assets/icons/ui-icons.svg#icon-add"></use>
+                <use href="assets/icons/lucide-icons.svg#icon-add"></use>
               </svg>
-              <span class="visually-hidden">Criar novo semestre</span>
+              <span class="project-hub__action-label">Novo semestre</span>
             </button>
             <label
               class="icon-button icon-button--action project-hub__action project-hub__import"
@@ -34,9 +46,9 @@
             >
               <input type="file" id="project-import" accept="application/json" />
               <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-upload" xlink:href="assets/icons/ui-icons.svg#icon-upload"></use>
+                <use href="assets/icons/lucide-icons.svg#icon-upload"></use>
               </svg>
-              <span class="visually-hidden">Importar arquivo JSON</span>
+              <span class="project-hub__action-label">Importar</span>
             </label>
             <button
               type="button"
@@ -46,9 +58,9 @@
               title="Atualizar lista de semestres"
             >
               <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-refresh" xlink:href="assets/icons/ui-icons.svg#icon-refresh"></use>
+                <use href="assets/icons/lucide-icons.svg#icon-refresh"></use>
               </svg>
-              <span class="visually-hidden">Atualizar lista de semestres</span>
+              <span class="project-hub__action-label">Atualizar</span>
             </button>
           </div>
           <span class="project-hub__actions-divider" aria-hidden="true"></span>
@@ -61,7 +73,7 @@
           >
             <span class="login-avatar" aria-hidden="true">
               <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-login" xlink:href="assets/icons/ui-icons.svg#icon-login"></use>
+                <use href="assets/icons/lucide-icons.svg#icon-login"></use>
               </svg>
               <span class="login-avatar__initials"></span>
             </span>
@@ -79,12 +91,24 @@
 
       <ul id="project-list" class="project-list" aria-live="polite"></ul>
       <p id="project-hub-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
+      <footer class="institutional-footer">
+        <span>Desenvolvido por Felipe Walter Dafico Pfrimer · COELE-TD</span>
+        <span aria-hidden="true">·</span>
+        <a href="https://www.utfpr.edu.br/comunicacao/design/marca-da-utfpr" target="_blank" rel="noopener noreferrer">Marca UTFPR</a>
+        <a href="https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&amp;id_documento=6226788&amp;id_orgao_publicacao=0" target="_blank" rel="noopener noreferrer">Ofício SEI</a>
+      </footer>
     </div>
   </section>
 
   <div id="planner-shell" class="planner-shell">
     <header>
       <div class="top-bar" role="region" aria-label="Seleção de visualização">
+      <div class="institutional-brand institutional-brand--workspace" aria-label="UTFPR Campus Toledo">
+        <span class="institutional-brand__logo">
+          <img src="assets/brand/utfpr-logo.png" alt="UTFPR" />
+        </span>
+        <span class="institutional-brand__campus">Campus Toledo</span>
+      </div>
       <button
         type="button"
         id="top-bar-compact-toggle"
@@ -93,7 +117,7 @@
         aria-expanded="false"
       >
         <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
-          <use href="assets/icons/ui-icons.svg#icon-settings" xlink:href="assets/icons/ui-icons.svg#icon-settings"></use>
+          <use href="assets/icons/lucide-icons.svg#icon-controls"></use>
         </svg>
         <span>Controles do mapa</span>
       </button>
@@ -108,7 +132,7 @@
             title="Voltar para a tela inicial"
           >
             <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
-              <use href="assets/icons/ui-icons.svg#icon-back" xlink:href="assets/icons/ui-icons.svg#icon-back"></use>
+              <use href="assets/icons/lucide-icons.svg#icon-back"></use>
             </svg>
           </button>
           <button
@@ -119,7 +143,7 @@
             title="Salvar semestre"
           >
             <svg class="icon icon--toolbar" aria-hidden="true" focusable="false">
-              <use href="assets/icons/ui-icons.svg#icon-save" xlink:href="assets/icons/ui-icons.svg#icon-save"></use>
+              <use href="assets/icons/lucide-icons.svg#icon-save"></use>
             </svg>
           </button>
         </div>
@@ -147,7 +171,7 @@
                   autocomplete="off"
                 />
                 <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                  <span aria-hidden="true">▾</span>
+                  <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
                 </button>
               </div>
               <ul class="searchable-options" role="listbox"></ul>
@@ -169,7 +193,7 @@
                   autocomplete="off"
                 />
                 <button type="button" class="searchable-toggle" aria-label="Exibir itens">
-                  <span aria-hidden="true">▾</span>
+                  <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
                 </button>
               </div>
               <ul class="searchable-options" role="listbox"></ul>
@@ -190,6 +214,7 @@
           >
             <span id="project-title-name-text">Nenhum semestre selecionado</span>
           </button>
+          <span id="workspace-save-status" class="workspace-save-status" data-status="saved" role="status" aria-live="polite">Salvo</span>
         </div>
         <div class="top-bar__divider" aria-hidden="true"></div>
         <div class="top-bar__selection">
@@ -209,8 +234,7 @@
                 xmlns:xlink="http://www.w3.org/1999/xlink"
               >
                 <use
-                  href="assets/icons/ui-icons.svg#icon-multi-select"
-                  xlink:href="assets/icons/ui-icons.svg#icon-multi-select"
+                  href="assets/icons/lucide-icons.svg#icon-multi-select"
                 ></use>
               </svg>
               <span class="visually-hidden">Ativar seleção múltipla</span>
@@ -240,8 +264,7 @@
                 xmlns:xlink="http://www.w3.org/1999/xlink"
               >
                 <use
-                  href="assets/icons/ui-icons.svg#icon-edit"
-                  xlink:href="assets/icons/ui-icons.svg#icon-edit"
+                  href="assets/icons/lucide-icons.svg#icon-edit"
                 ></use>
               </svg>
               <span class="visually-hidden">Editar seleção</span>
@@ -261,8 +284,7 @@
                 xmlns:xlink="http://www.w3.org/1999/xlink"
               >
                 <use
-                  href="assets/icons/ui-icons.svg#icon-delete"
-                  xlink:href="assets/icons/ui-icons.svg#icon-delete"
+                  href="assets/icons/lucide-icons.svg#icon-delete"
                 ></use>
               </svg>
               <span class="visually-hidden">Limpar seleção</span>
@@ -280,7 +302,7 @@
           >
             <span class="login-avatar" aria-hidden="true">
               <svg class="icon" aria-hidden="true" focusable="false">
-                <use href="assets/icons/ui-icons.svg#icon-login" xlink:href="assets/icons/ui-icons.svg#icon-login"></use>
+                <use href="assets/icons/lucide-icons.svg#icon-login"></use>
               </svg>
               <span class="login-avatar__initials"></span>
             </span>
@@ -312,7 +334,7 @@
           title="Gerenciar períodos"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-period" xlink:href="assets/icons/ui-icons.svg#icon-period"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-period"></use>
           </svg>
           <span class="label visually-hidden">Períodos</span>
         </button>
@@ -326,7 +348,7 @@
           title="Gerenciar docentes"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-professor" xlink:href="assets/icons/ui-icons.svg#icon-professor"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-professor"></use>
           </svg>
           <span class="label visually-hidden">Docentes</span>
         </button>
@@ -340,7 +362,7 @@
           title="Gerenciar salas"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-room" xlink:href="assets/icons/ui-icons.svg#icon-room"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-room"></use>
           </svg>
           <span class="label visually-hidden">Salas</span>
         </button>
@@ -354,7 +376,7 @@
           title="Gerenciar disciplinas"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-discipline" xlink:href="assets/icons/ui-icons.svg#icon-discipline"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-discipline"></use>
           </svg>
           <span class="label visually-hidden">Disciplinas</span>
         </button>
@@ -370,7 +392,7 @@
           title="Configurações salvas"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-settings" xlink:href="assets/icons/ui-icons.svg#icon-settings"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-settings"></use>
           </svg>
           <span class="label visually-hidden">Configurações</span>
         </button>
@@ -383,7 +405,7 @@
           title="Imprimir mapas"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-print" xlink:href="assets/icons/ui-icons.svg#icon-print"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-print"></use>
           </svg>
           <span class="label visually-hidden">Imprimir</span>
         </button>
@@ -396,7 +418,7 @@
           title="Ativar modo noturno"
         >
           <svg class="icon icon--menu" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <use href="assets/icons/ui-icons.svg#icon-moon" xlink:href="assets/icons/ui-icons.svg#icon-moon"></use>
+            <use href="assets/icons/lucide-icons.svg#icon-moon"></use>
           </svg>
           <span class="label visually-hidden">Modo noturno</span>
         </button>
@@ -420,7 +442,9 @@
     <aside id="management-panel" class="management-panel hidden" aria-hidden="true" tabindex="-1">
     <div class="panel-header">
       <h2 id="panel-title">Gerenciar</h2>
-      <button type="button" class="panel-close" aria-label="Fechar painel">&times;</button>
+      <button type="button" class="panel-close" aria-label="Fechar painel">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-remove"></use></svg>
+      </button>
     </div>
     <div class="panel-content">
       <section id="panel-periods" class="panel-section" data-panel="periods" data-title="Períodos" hidden>
@@ -454,7 +478,7 @@
                 title="Adicionar disciplina"
               >
                 <svg class="icon icon--small" aria-hidden="true" focusable="false" xmlns:xlink="http://www.w3.org/1999/xlink">
-                  <use href="assets/icons/ui-icons.svg#icon-add" xlink:href="assets/icons/ui-icons.svg#icon-add"></use>
+                  <use href="assets/icons/lucide-icons.svg#icon-add"></use>
                 </svg>
               </button>
             </div>
@@ -557,7 +581,9 @@
 
     <div id="assignment-modal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-content">
-        <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
+        <button class="modal-close" type="button" aria-label="Fechar">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-remove"></use></svg>
+        </button>
         <h2>Editar horário</h2>
         <form id="assignment-form" class="modal-form">
         <div class="form-row">
@@ -583,7 +609,7 @@
                 autocomplete="off"
               />
               <button type="button" class="searchable-toggle" aria-label="Exibir disciplinas">
-                <span aria-hidden="true">▾</span>
+                <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
               </button>
             </div>
             <ul class="searchable-options" role="listbox"></ul>
@@ -604,7 +630,7 @@
                   autocomplete="off"
                 />
                 <button type="button" class="searchable-toggle" aria-label="Exibir períodos">
-                  <span aria-hidden="true">▾</span>
+                  <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
                 </button>
               </div>
               <ul class="searchable-options" role="listbox"></ul>
@@ -623,7 +649,7 @@
                   autocomplete="off"
                 />
                 <button type="button" class="searchable-toggle" aria-label="Exibir docentes">
-                  <span aria-hidden="true">▾</span>
+                  <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
                 </button>
               </div>
               <ul class="searchable-options" role="listbox"></ul>
@@ -644,7 +670,7 @@
                 autocomplete="off"
               />
               <button type="button" class="searchable-toggle" aria-label="Exibir salas">
-                <span aria-hidden="true">▾</span>
+                <svg class="icon icon--small" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-expand"></use></svg>
               </button>
             </div>
             <ul class="searchable-options" role="listbox"></ul>
@@ -672,7 +698,7 @@
     <div class="login-modal__backdrop" data-login-dismiss></div>
     <div class="login-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
       <button type="button" id="login-modal-close" class="login-modal__close" aria-label="Fechar formulário de login">
-        ×
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-remove"></use></svg>
       </button>
       <h2 id="login-modal-title">Entrar no servidor</h2>
       <p class="login-modal__description">Autentique-se para salvar e editar os semestres diretamente no servidor.</p>
@@ -687,10 +713,32 @@
     </div>
   </div>
 
+  <div id="app-dialog" class="modal hidden" aria-hidden="true">
+    <div class="modal-content app-dialog__content" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+      <button type="button" id="app-dialog-close" class="modal-close" aria-label="Fechar">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-remove"></use></svg>
+      </button>
+      <h2 id="app-dialog-title">Confirmar ação</h2>
+      <p id="app-dialog-message"></p>
+      <label id="app-dialog-input-field" class="form-field" hidden>
+        <span id="app-dialog-input-label">Nome</span>
+        <input type="text" id="app-dialog-input" maxlength="80" />
+      </label>
+      <p id="app-dialog-feedback" class="storage-feedback" role="status" aria-live="polite"></p>
+      <div class="modal-actions">
+        <button type="button" id="app-dialog-cancel" class="ghost-button">Cancelar</button>
+        <button type="button" id="app-dialog-secondary" class="ghost-button" hidden></button>
+        <button type="button" id="app-dialog-confirm" class="primary">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
     <!-- Modal de impressão -->
     <div id="print-modal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-content">
-        <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
+        <button class="modal-close" type="button" aria-label="Fechar">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="assets/icons/lucide-icons.svg#icon-remove"></use></svg>
+        </button>
         <h2>Imprimir mapas de horários</h2>
         <form id="print-form">
           <div class="form-field">

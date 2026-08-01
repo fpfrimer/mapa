@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Publicar captura da tela inicial
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captura-utfpr-home
+          path: test-results/**/utfpr-home.png
+          if-no-files-found: warn
+
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Instalar LaTeX
+        run: sudo apt-get update && sudo apt-get install -y latexmk texlive-latex-extra texlive-lang-portuguese texlive-fonts-recommended
+      - name: Gerar figuras sintéticas
+        run: npm run docs:figures
+      - name: Validar e compilar manuais
+        run: npm run docs:check
+      - name: Publicar manuais PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: manuais-mapa-horarios
+          path: docs/manual/build/*.pdf
+          if-no-files-found: error

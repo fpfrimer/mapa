@@ -1,0 +1,170 @@
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage[scaled=0.94]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[a4paper,top=24mm,bottom=23mm,left=23mm,right=23mm,headheight=15pt]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{amssymb}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{titlesec}
+
+\input{metadata.tex}
+\graphicspath{{figures/generated/}}
+
+\definecolor{UtfprYellow}{HTML}{FFBE00}
+\definecolor{Ink}{HTML}{171717}
+\definecolor{Slate}{HTML}{52525B}
+\definecolor{Line}{HTML}{D4D4D8}
+\definecolor{Paper}{HTML}{FAFAFA}
+\definecolor{Success}{HTML}{237A45}
+\definecolor{Danger}{HTML}{B42318}
+\definecolor{Info}{HTML}{245B8A}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Ink,
+  urlcolor=Info,
+  pdftitle={\ManualTitle},
+  pdfauthor={\ManualAuthor},
+  pdfsubject={\AppName},
+  pdfkeywords={UTFPR, Campus Toledo, horários acadêmicos}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{Slate}\AppName}
+\fancyhead[R]{\small\color{Slate}\ManualShortTitle}
+\fancyfoot[L]{\footnotesize\color{Slate}\InstitutionCampus{} \textperiodcentered{} versão \AppVersion}
+\fancyfoot[R]{\footnotesize\color{Slate}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\color{Ink}}
+  {\Large\color{UtfprYellow}\chaptername\ \thechapter}
+  {3pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-12pt}{18pt}
+\titleformat{\section}{\Large\bfseries\color{Ink}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries\color{Ink}}{\thesubsection}{0.7em}{}
+
+\setlist[itemize]{leftmargin=6mm,itemsep=2pt,topsep=4pt}
+\setlist[enumerate]{leftmargin=8mm,itemsep=3pt,topsep=4pt}
+\captionsetup{font=small,labelfont=bf,justification=centering}
+
+\lstdefinestyle{terminal}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{Paper},
+  frame=single,
+  rulecolor=\color{Line},
+  framerule=0.4pt,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  aboveskip=8pt,
+  belowskip=8pt
+}
+\lstset{style=terminal}
+
+\newtcolorbox{noticebox}[1][Atenção]{
+  enhanced,breakable,colback=Paper,colframe=UtfprYellow,
+  boxrule=0.7pt,arc=2pt,left=3mm,right=3mm,top=2mm,bottom=2mm,
+  title={#1},fonttitle=\bfseries,coltitle=Ink
+}
+\newtcolorbox{dangerbox}[1][Cuidado]{
+  enhanced,breakable,colback=Paper,colframe=Danger,
+  boxrule=0.7pt,arc=2pt,left=3mm,right=3mm,top=2mm,bottom=2mm,
+  title={#1},fonttitle=\bfseries,coltitle=Danger
+}
+\newtcolorbox{tipbox}[1][Dica]{
+  enhanced,breakable,colback=Paper,colframe=Success,
+  boxrule=0.7pt,arc=2pt,left=3mm,right=3mm,top=2mm,bottom=2mm,
+  title={#1},fonttitle=\bfseries,coltitle=Success
+}
+
+\newcommand{\menu}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\ManualFigure}[4][0.94\textwidth]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=#1,height=0.70\textheight,keepaspectratio]{#2}
+    \caption{#3 O conteúdo visual é complementado pela descrição no texto.}
+    \label{#4}
+  \end{figure}
+}
+
+\newcommand{\ManualCover}{%
+  \begin{titlepage}
+    \thispagestyle{empty}
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[UtfprYellow] (current page.north west) rectangle ([yshift=-8mm]current page.north east);
+    \end{tikzpicture}
+    \vspace*{15mm}
+    \begin{center}
+      \colorbox{white}{\parbox{0.46\textwidth}{\centering\vspace{5mm}
+        \includegraphics[width=0.78\linewidth]{../../assets/brand/utfpr-logo.png}\vspace{5mm}}}
+      \vspace{10mm}
+
+      {\Large\bfseries \InstitutionCampus\par}
+      \vspace{2mm}
+      {\large\color{Slate}\InstitutionUnit\par}
+      \vfill
+      {\Huge\bfseries\color{Ink}\ManualTitle\par}
+      \vspace{6mm}
+      {\Large\color{Slate}\AppName\par}
+      \vspace{4mm}
+      {\large versão da aplicação \AppVersion\par}
+      \vfill
+      \rule{0.70\textwidth}{0.6pt}\par
+      \vspace{5mm}
+      {\ManualAuthor\par}
+      {Revisão \ManualRevision{} \textperiodcentered{} \ManualDate\par}
+    \end{center}
+  \end{titlepage}
+}
+
+\newcommand{\ManualFrontMatter}{%
+  \ManualCover
+  \pagenumbering{roman}
+  \chapter*{Sobre este manual}
+  Este documento descreve a versão \AppVersion{} da aplicação. A interface pode receber pequenos ajustes visuais sem alterar o procedimento. Em caso de divergência funcional, registre a versão exibida, a ação executada e a mensagem apresentada.
+
+  A marca UTFPR é usada sem alteração e acompanhada por textos independentes. Consulte a \href{https://www.utfpr.edu.br/comunicacao/design/marca-da-utfpr}{página oficial da marca}, o \href{https://www.utfpr.edu.br/comunicacao/design/manual-de-uso-da-identidade-visual-da-utfpr/identidade-visual-utfpr-2016-a4-1.pdf/@@download/file}{manual de identidade visual} e o \href{https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar\&id_documento=6226788\&id_orgao_publicacao=0}{Ofício Circular SEI}.
+
+  \tableofcontents
+  \clearpage
+  \pagenumbering{arabic}
+}
+
+\newcommand{\ManualBackMatter}{%
+  \clearpage
+  \chapter*{Controle do documento}
+  \addcontentsline{toc}{chapter}{Controle do documento}
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    Documento & \ManualTitle \\
+    Aplicação & \AppName{} \AppVersion \\
+    Revisão & \ManualRevision \\
+    Data & \ManualDate \\
+    Responsável & \ManualAuthor \\
+    Unidade & \InstitutionCampus \\
+    \bottomrule
+  \end{tabularx}
+}

@@ -1,0 +1,208 @@
+\chapter{Primeiro acesso}
+
+O Mapa de Horários Acadêmicos permite cadastrar os recursos de um semestre, distribuir aulas na semana, verificar ocupações e produzir mapas para consulta ou impressão. Recomenda-se usar uma versão atual do Firefox, Chromium ou navegador equivalente em um computador com tela ampla durante a edição.
+
+\section{Entrar e sair}
+
+Ao abrir o endereço informado pela administração, o formulário de autenticação é apresentado. Informe o usuário e a senha recebidos e pressione \menu{Entrar}. Uma mensagem genérica será exibida se os dados forem inválidos. Tentativas repetidas podem provocar bloqueio temporário.
+
+\ManualFigure{01-login.png}{Tela de autenticação. O formulário solicita somente usuário e senha e mantém a marca institucional em área branca.}{fig:user-login}
+
+O botão de sessão fica disponível na tela inicial e no editor. Quando autenticado, ele apresenta a ação \menu{Sair}. A sessão também expira automaticamente; nesse caso, faça login novamente para acessar a biblioteca ou salvar.
+
+\begin{noticebox}[Sessão e rascunho]
+O navegador mantém um rascunho local, mas a biblioteca compartilhada exige autenticação. Não considere o trabalho concluído até que o indicador mostre \menu{Salvo}.
+\end{noticebox}
+
+\section{Tema e navegação por teclado}
+
+Use o botão de lua ou sol para alternar os temas claro e escuro. O logotipo permanece sobre uma superfície branca. Com o teclado, use \code{Tab} e \code{Shift+Tab} para navegar, \code{Enter} ou espaço para acionar controles e \code{Esc} para fechar diálogos.
+
+\chapter{Tela inicial e semestres}
+
+A tela inicial reúne a biblioteca de semestres. O topo contém apenas as ações globais \menu{Novo semestre}, \menu{Importar} e \menu{Atualizar}. Cada cartão apresenta nome, editor, última atualização e as ações específicas.
+
+\ManualFigure{02-hub.png}{Tela inicial com um semestre sintético. As ações do cartão são abrir, duplicar, exportar e excluir.}{fig:user-hub}
+
+\section{Criar e abrir}
+
+Para iniciar um trabalho:
+
+\begin{enumerate}
+  \item Pressione \menu{Novo semestre}.
+  \item Informe um nome curto e inequívoco, por exemplo \emph{Engenharia Eletrônica --- 2026.2}.
+  \item Confirme. O editor será aberto com os cadastros vazios.
+\end{enumerate}
+
+\ManualFigure{03-novo-semestre.png}{Diálogo consistente para nomear um novo semestre. O foco permanece dentro do diálogo até confirmar ou cancelar.}{fig:user-new}
+
+Para trabalhar em um registro existente, use a ação \menu{Abrir semestre} no cartão. Clicar no nome permite renomeá-lo. Se houver alterações locais pendentes antes de trocar de semestre, a aplicação pedirá confirmação.
+
+\section{Duplicar, exportar e excluir}
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[Duplicar semestre] cria um novo registro independente, útil como ponto de partida para uma nova oferta.
+  \item[Exportar semestre] baixa um JSON que pode ser guardado ou importado posteriormente.
+  \item[Excluir semestre] remove a versão compartilhada após confirmação. Faça uma exportação ou backup quando for necessário preservar o conteúdo.
+\end{description}
+
+\begin{dangerbox}
+Excluir não equivale a arquivar. A recuperação depende de um backup administrativo. Confira o nome do semestre antes de confirmar.
+\end{dangerbox}
+
+\chapter{Ambiente de edição}
+
+O editor possui quatro regiões: identificação e salvamento no topo; filtros de visualização; menu lateral de cadastros; e grade semanal. Em telas estreitas, parte dos controles é recolhida em um painel compacto.
+
+\ManualFigure{04-editor.png}{Visão geral do editor com semestre, estado de salvamento, filtros, menu lateral e grade semanal.}{fig:user-editor}
+
+\section{Cadastros básicos}
+
+Cadastre os recursos antes de distribuir aulas. Os botões laterais abrem painéis de \menu{Períodos}, \menu{Docentes}, \menu{Salas} e \menu{Disciplinas}.
+
+\begin{enumerate}
+  \item Em \menu{Períodos}, informe nomes como ``1º Período''.
+  \item Em \menu{Disciplinas}, informe nome, código, quantidade prevista de horários, cor e período.
+  \item Em \menu{Docentes}, relacione as disciplinas que podem ser ministradas e, quando aplicável, marque a área do curso.
+  \item Em \menu{Salas}, use identificações conhecidas pela comunidade, incluindo bloco quando necessário.
+\end{enumerate}
+
+Os campos de busca e filtros auxiliam quando as listas crescem. As ações de editar e excluir ficam junto a cada item. Ao alterar o período de uma disciplina já distribuída, leia com atenção os conflitos informados.
+
+\ManualFigure{05-cadastros.png}{Painel de disciplinas com formulário, filtros e lista. Os demais cadastros seguem a mesma organização.}{fig:user-entities}
+
+\begin{tipbox}
+Adote uma convenção de nomes antes de começar: nomes completos para docentes, código oficial para disciplinas e bloco-sala para ambientes. Isso torna mapas e buscas consistentes.
+\end{tipbox}
+
+\chapter{Montagem da grade}
+
+\section{Visualização e atribuição simples}
+
+Em \menu{Visualizar por}, escolha período, docente ou sala. Depois, selecione a entidade. A grade mostra manhã, tarde e noite de segunda a sábado.
+
+Para preencher um horário:
+
+\begin{enumerate}
+  \item Na visão por período, selecione o período desejado.
+  \item Clique em uma célula vazia.
+  \item Escolha disciplina, docente e sala no diálogo de atribuição.
+  \item Confira as sugestões ou avisos e confirme.
+\end{enumerate}
+
+Clique em uma aula existente para editá-la ou removê-la. Uma aula única também pode ser arrastada para outro horário compatível. As cores identificam disciplinas; mensagens e símbolos complementam a cor quando há erro.
+
+\ManualFigure{06-grade.png}{Grade preenchida com disciplinas sintéticas. Cada célula reúne a disciplina, o docente e a sala atribuídos.}{fig:user-grid}
+
+\section{Seleção múltipla}
+
+Ative \menu{Seleção múltipla}, marque duas ou mais células e use \menu{Editar seleção}. O contador confirma quantos horários estão selecionados. \menu{Limpar seleção} desmarca todos. Esse fluxo é indicado para blocos consecutivos da mesma disciplina.
+
+\ManualFigure{07-selecao-multipla.png}{Duas células selecionadas e contador visível. A seleção é indicada por contorno e texto, não apenas pela cor.}{fig:user-multiple}
+
+Antes de substituir atribuições existentes, a aplicação apresenta os conflitos encontrados. Confirme somente se a substituição for intencional.
+
+\section{Horários livres}
+
+Escolha \menu{Horário livre} e selecione um ou mais docentes. A grade distingue horários em que todos estão livres, ocupações e conflitos. Essa visão é somente informativa: volte a período, docente ou sala para editar.
+
+\ManualFigure{08-horarios-livres.png}{Matriz de disponibilidade de docente. Cada célula contém um rótulo textual como ``Livre'' ou ``Ocupado''.}{fig:user-free}
+
+\chapter{Salvamento e trabalho concorrente}
+
+O estado do semestre aparece permanentemente junto ao nome:
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.69\textwidth}@{}}
+\toprule
+\textbf{Estado} & \textbf{Significado e ação} \\
+\midrule
+\endhead
+Salvo & A versão local foi confirmada pelo servidor. \\
+Alterações não salvas & Há mudanças locais. Use o botão de salvar antes de sair. \\
+Salvando & A requisição está em andamento; aguarde a confirmação. \\
+Conflito & Outra sessão atualizou o mesmo semestre. Escolha uma forma de preservar o trabalho. \\
+\bottomrule
+\end{longtable}
+
+\ManualFigure{09-estado-salvamento.png}{Barra superior durante uma alteração ainda não confirmada pelo servidor.}{fig:user-save}
+
+\section{Resolver conflito}
+
+O servidor controla uma revisão numérica de cada semestre. Se outra sessão salvar primeiro, a aplicação não sobrescreve a versão mais recente.
+
+\ManualFigure{10-conflito.png}{Diálogo de conflito com duas alternativas explícitas. Fechar o diálogo mantém as alterações locais pendentes.}{fig:user-conflict}
+
+Escolha uma das opções:
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[Recarregar servidor] descarta as alterações locais divergentes e carrega a revisão mais nova.
+  \item[Salvar como cópia] preserva o trabalho local em um novo semestre, sem alterar o registro atualizado por outra pessoa.
+\end{description}
+
+\begin{dangerbox}[Evite perda de trabalho]
+Não recarregue a versão do servidor se ainda precisar das mudanças locais. Use \menu{Salvar como cópia}, compare os dois semestres e consolide as alterações manualmente.
+\end{dangerbox}
+
+\chapter{Importação, exportação e impressão}
+
+\section{Importar e exportar}
+
+Na tela inicial, \menu{Importar} recebe um arquivo JSON exportado pela própria aplicação. Revise o nome sugerido e confirme a troca. Arquivos inválidos ou excessivamente complexos são recusados. Não edite manualmente o JSON, exceto quando orientado pela administração.
+
+A exportação de um cartão produz uma cópia transportável do semestre. Ela não substitui o backup dos dados do servidor.
+
+\section{Visualizar e imprimir}
+
+Abra \menu{Imprimir} no menu lateral e escolha a visão atual ou conjuntos completos de períodos, docentes e salas. Selecione o layout:
+
+\begin{itemize}
+  \item \menu{Normal}: maior legibilidade e mais espaço por célula;
+  \item \menu{Compacto}: reduz texto e espaçamento para conjuntos extensos.
+\end{itemize}
+
+\menu{Visualizar} abre o mesmo documento usado na impressão sem chamar a caixa do navegador. \menu{Imprimir} aguarda o carregamento do documento e abre a caixa de impressão. Cada mapa começa em uma nova página.
+
+\ManualFigure{11-impressao.png}{Seleção de mapas e layout compacto no diálogo de impressão.}{fig:user-print}
+
+Se nada abrir, permita popups para o endereço da aplicação. Antes de imprimir, confira título, cores, orientação e quantidade de páginas.
+
+\chapter{Problemas frequentes e referência rápida}
+
+\begin{longtable}{@{}p{0.34\textwidth}p{0.60\textwidth}@{}}
+\toprule
+\textbf{Situação} & \textbf{Como proceder} \\
+\midrule
+\endhead
+A biblioteca não carrega & Entre novamente. Se persistir, confirme rede e endereço com a administração. \\
+O estado permanece não salvo & Tente salvar novamente. Não feche a aba; exporte se o servidor continuar indisponível. \\
+Uma entidade não aparece & Confira o cadastro e os filtros ativos. \\
+Não é possível editar a grade & Saia da visão de horários livres e selecione um período, docente ou sala. \\
+A pré-visualização não abre & Autorize popups para a aplicação. \\
+Há conflito de edição & Salve como cópia quando precisar preservar as mudanças locais. \\
+\bottomrule
+\end{longtable}
+
+\section{Ícones principais}
+
+Os ícones Lucide seguem traço uniforme. Ações principais mantêm texto; ferramentas compactas possuem nome acessível e dica ao passar o ponteiro.
+
+\begin{tabularx}{\textwidth}{@{}lXlX@{}}
+\toprule
+\textbf{Ação} & \textbf{Significado} & \textbf{Ação} & \textbf{Significado} \\
+\midrule
+Abrir & Entrar no semestre & Salvar & Sincronizar alterações \\
+Duplicar & Criar cópia & Exportar & Baixar JSON \\
+Excluir & Remover registro & Imprimir & Gerar mapas \\
+Lua/sol & Alternar tema & Sair & Encerrar sessão \\
+\bottomrule
+\end{tabularx}
+
+\section{Glossário}
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[Semestre] conjunto nomeado de cadastros e mapas armazenado como uma configuração.
+  \item[Atribuição] relação entre disciplina, docente e sala em um horário.
+  \item[Revisão] número usado pelo servidor para detectar atualizações concorrentes.
+  \item[Rascunho local] cópia temporária mantida pelo navegador até a sincronização.
+  \item[Mapa] representação semanal de um período, docente ou sala.
+\end{description}

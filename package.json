@@ -4,6 +4,20 @@
   "private": true,
   "description": "Mapa de horários acadêmicos com persistência no servidor",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test",
+    "lint": "eslint server.js script.js scripts/*.js test/**/*.js playwright.config.js playwright.docs.config.js eslint.config.js",
+    "check:icons": "node scripts/check-icons.js",
+    "check:sensitive": "node scripts/check-sensitive-files.js",
+    "docs:figures": "playwright test --config=playwright.docs.config.js",
+    "docs:pdf": "latexmk -cd -pdf -interaction=nonstopmode -halt-on-error -outdir=build docs/manual/manual-usuario.tex && latexmk -cd -pdf -interaction=nonstopmode -halt-on-error -outdir=build docs/manual/manual-administrador.tex",
+    "docs:check": "node scripts/check-docs.js && npm run docs:pdf",
+    "docs": "npm run docs:figures && npm run docs:check",
+    "check": "npm run lint && npm run check:icons && npm run check:sensitive && npm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "eslint": "10.8.0"
   }
 }
