@@ -9,8 +9,9 @@ node_modules/
 test-results/
 playwright-report/
 
-# Artefatos temporários dos manuais LaTeX
-docs/manual/build/
+# Artefatos temporários dos manuais LaTeX; os PDFs finais são versionados
+docs/manual/build/*
+!docs/manual/build/*.pdf
 docs/manual/*.aux
 docs/manual/*.bbl
 docs/manual/*.blg
@@ -19,7 +20,6 @@ docs/manual/*.fls
 docs/manual/*.lof
 docs/manual/*.log
 docs/manual/*.out
-docs/manual/*.pdf
 docs/manual/*.toc
 
 # Arquivos de sistema

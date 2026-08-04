@@ -76,7 +76,7 @@ test('login, edição, concorrência e visualização de impressão', async ({ p
   expect(await preview.content()).toContain('&lt;teste&gt;');
 });
 
-test('marca UTFPR e crédito permanecem visíveis nos temas e larguras previstas', async ({ page }, testInfo) => {
+test('marca UTFPR e links institucionais permanecem visíveis nos temas e larguras previstas', async ({ page }, testInfo) => {
   const spriteRequests = [];
   page.on('request', (request) => {
     if (request.url().includes('/assets/icons/')) spriteRequests.push(request.url());
@@ -88,9 +88,8 @@ test('marca UTFPR e crédito permanecem visíveis nos temas e larguras previstas
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator('.institutional-brand--hub img')).toBeVisible();
     await expect(page.getByText('Campus Toledo', { exact: true }).first()).toBeVisible();
-    await expect(page.locator('.institutional-footer')).toContainText(
-      'Desenvolvido por Felipe Walter Dafico Pfrimer · COELE-TD'
-    );
+    await expect(page.locator('.institutional-footer')).not.toContainText('Felipe Walter');
+    await expect(page.locator('.institutional-footer a')).toHaveCount(2);
     const actionSizes = await page.locator('.project-hub__action').evaluateAll((actions) =>
       actions.map((action) => ({ width: action.getBoundingClientRect().width, height: action.getBoundingClientRect().height }))
     );

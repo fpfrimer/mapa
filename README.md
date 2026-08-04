@@ -4,11 +4,11 @@ Aplicação web para montar, validar, salvar e imprimir mapas semanais por perí
 
 ## Documentação
 
-- [Manual do Usuário](docs/manual/manual-usuario.tex): acesso, semestres, cadastros, grade, conflitos e impressão.
-- [Manual do Administrador](docs/manual/manual-administrador.tex): implantação Ubuntu/systemd, segurança, usuários, backup, restauração e diagnóstico.
+- [Manual do Usuário em PDF](docs/manual/build/manual-usuario.pdf): acesso, semestres, cadastros, grade, conflitos e impressão.
+- [Manual do Administrador em PDF](docs/manual/build/manual-administrador.pdf): implantação Ubuntu/systemd, segurança, usuários, backup, restauração e diagnóstico.
 - [Fontes e figuras dos manuais](docs/manual/): documentos A4 em português, identidade UTFPR e capturas Playwright com dados sintéticos.
 
-Os PDFs são compilados pela CI e publicados no artefato `manuais-mapa-horarios`; os binários não são mantidos no histórico Git.
+Os PDFs finais ficam versionados no GitHub e também são publicados pela CI no artefato `manuais-mapa-horarios`.
 
 ## Requisitos e início rápido
 
@@ -106,7 +106,7 @@ Em Linux, prepare o navegador local com `npx playwright install --with-deps chro
 
 ## Manuais em LaTeX
 
-Os fontes dos manuais de usuário e administrador ficam em `docs/manual/`. As telas documentais são geradas pelo Playwright com dados sintéticos e ficam versionadas; os PDFs são artefatos de CI e não são adicionados ao Git.
+Os fontes dos manuais de usuário e administrador ficam em `docs/manual/`. As telas documentais são geradas pelo Playwright com dados sintéticos. Figuras e PDFs finais ficam versionados, além de serem recompilados pela CI.
 
 ```bash
 npm run docs:figures  # atualiza as capturas da interface
